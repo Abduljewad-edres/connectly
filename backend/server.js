@@ -57,16 +57,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 // Static directory for uploaded images
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Health check endpoint
-app.get('/', (req, res) => {
-  res.json({
-    status: 'online',
-    project: 'Connectly API',
-    tagline: 'Connect. Share. Belong.',
-    version: '1.0'
-  });
-});
-
+// Health check / API status endpoints
 app.get('/api', (req, res) => {
   res.json({
     status: 'online',
@@ -106,10 +97,10 @@ app.use('/api/opportunities', opportunityRoutes);
 app.use('/api/discovery', discoveryRoutes);
 app.use('/api/spaces', liveSpaceRoutes);
 
-// Serve frontend client in production
-// Serve frontend static build and PWA assets in production or when dist exists
+// Serve frontend client in production or when dist exists
 const frontendDist = path.join(__dirname, '../frontend/dist');
 if (fs.existsSync(frontendDist)) {
+  console.log(`[Server] Serving production frontend build from ${frontendDist}`);
   app.use(express.static(frontendDist, {
     setHeaders: (res, filePath) => {
       if (filePath.endsWith('sw.js')) {
@@ -128,6 +119,16 @@ if (fs.existsSync(frontendDist)) {
       return next();
     }
     res.sendFile(path.join(frontendDist, 'index.html'));
+  });
+} else {
+  // If running backend standalone without frontend build, show API info on root
+  app.get('/', (req, res) => {
+    res.json({
+      status: 'online',
+      project: 'Connectly API',
+      tagline: 'Connect. Share. Belong.',
+      version: '1.0'
+    });
   });
 }
 
