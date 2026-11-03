@@ -20,10 +20,11 @@ import {
   FilmIcon,
   LanguagesIcon,
   CheckIcon,
-  SparklesIcon
+  SparklesIcon,
+  MenuIcon
 } from './Icons';
 
-export const Navbar = ({ onOpenSettings, onOpenNotifications }) => {
+export const Navbar = ({ onOpenSettings, onOpenNotifications, onOpenMobileMenu }) => {
   const { user, isAuthenticated, logout } = useAuth();
   const { currentPath, navigate } = useRouter();
   const { isDark, toggleTheme } = useTheme();
@@ -154,10 +155,10 @@ export const Navbar = ({ onOpenSettings, onOpenNotifications }) => {
             </button>
           )}
 
-          {/* Shorts & Reels */}
+          {/* Shorts & Reels (Desktop only in top navbar) */}
           <button
             type="button"
-            className={`btn-icon nav-bell-btn ${currentPath.startsWith('/reels') ? 'active' : ''}`}
+            className={`btn-icon nav-bell-btn desktop-only-nav ${currentPath.startsWith('/reels') ? 'active' : ''}`}
             onClick={() => navigate('/reels')}
             title="Shorts & Reels"
             aria-label="Shorts & Reels"
@@ -167,10 +168,10 @@ export const Navbar = ({ onOpenSettings, onOpenNotifications }) => {
 
           {isAuthenticated ? (
             <>
-              {/* Direct Messages */}
+              {/* Direct Messages (Desktop only in top navbar) */}
               <button
                 type="button"
-                className="btn-icon nav-bell-btn relative-container"
+                className="btn-icon nav-bell-btn relative-container desktop-only-nav"
                 onClick={() => navigate('/messages')}
                 title="Direct Messages"
                 aria-label="Direct Messages"
@@ -213,31 +214,60 @@ export const Navbar = ({ onOpenSettings, onOpenNotifications }) => {
                 <VerifiedBadge isVerified={user?.isVerified} size={13} />
               </div>
 
-              {/* Three dots setting button on the top right corner of the page */}
+              {/* Three dots setting button (Desktop) */}
               <button
-                className="btn-icon nav-settings-dots-btn"
+                className="btn-icon nav-settings-dots-btn desktop-only-nav"
                 onClick={onOpenSettings}
                 title="Settings & Preferences"
                 aria-label="Settings"
               >
                 <MoreVerticalIcon size={20} />
               </button>
+
+              {/* Mobile Navigation Drawer Toggle */}
+              <button
+                type="button"
+                className="btn-icon mobile-menu-toggle-btn"
+                onClick={onOpenMobileMenu}
+                title="Open Navigation Menu"
+                aria-label="Open Navigation Menu"
+              >
+                <div className="relative-container">
+                  <MenuIcon size={22} />
+                  {(unreadCount > 0 || unreadMessagesCount > 0) && (
+                    <span className="nav-menu-alert-dot" />
+                  )}
+                </div>
+              </button>
             </>
           ) : (
-            <div className="auth-buttons">
+            <>
+              <div className="auth-buttons">
+                <button
+                  className="btn btn-outline btn-sm"
+                  onClick={() => navigate('/login')}
+                >
+                  Log In
+                </button>
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={() => navigate('/register')}
+                >
+                  Register
+                </button>
+              </div>
+
+              {/* Mobile Navigation Drawer Toggle for Guests */}
               <button
-                className="btn btn-outline btn-sm"
-                onClick={() => navigate('/login')}
+                type="button"
+                className="btn-icon mobile-menu-toggle-btn"
+                onClick={onOpenMobileMenu}
+                title="Open Navigation Menu"
+                aria-label="Open Navigation Menu"
               >
-                Log In
+                <MenuIcon size={22} />
               </button>
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={() => navigate('/register')}
-              >
-                Register
-              </button>
-            </div>
+            </>
           )}
         </div>
       </div>

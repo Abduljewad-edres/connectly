@@ -34,9 +34,10 @@ import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { PrivacySecurityModal } from './components/PrivacySecurityModal';
+import { MobileNavDrawer } from './components/MobileNavDrawer';
 
 // Mobile icons
-import { HomeIcon, SearchIcon, PlusSquareIcon, UserIcon, BellIcon, MessageSquareIcon, FilmIcon } from './components/Icons';
+import { HomeIcon, SearchIcon, PlusSquareIcon, UserIcon, BellIcon, MessageSquareIcon, FilmIcon, CompassIcon, MenuIcon } from './components/Icons';
 import './App.css';
 
 function MainApp() {
@@ -51,6 +52,7 @@ function MainApp() {
   const [isEditProfileModalOpen, setIsEditProfileModalOpen] = useState(false);
   const [isNotificationDrawerOpen, setIsNotificationDrawerOpen] = useState(false);
   const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
 
   const handleOpenCreatePost = () => {
     if (!isAuthenticated) {
@@ -145,6 +147,7 @@ function MainApp() {
       <Navbar
         onOpenSettings={handleOpenSettings}
         onOpenNotifications={() => setIsNotificationDrawerOpen(true)}
+        onOpenMobileMenu={() => setIsMobileDrawerOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -166,63 +169,102 @@ function MainApp() {
 
       {/* Mobile Bottom Navigation Bar */}
       {!isAuthPage && (
-        <nav className="mobile-bottom-bar">
+        <nav className="mobile-bottom-bar" aria-label="Mobile Navigation">
+          {/* 1. Home Feed */}
           <button
+            type="button"
             className={`mobile-tab-btn ${currentPath === '/' ? 'active' : ''}`}
             onClick={() => navigate('/')}
-            title="Home"
+            title="Home Feed"
+            aria-label="Home Feed"
           >
             <HomeIcon size={22} />
+            <span className="mobile-tab-text">Home</span>
           </button>
 
+          {/* 2. Explore & Search */}
           <button
-            className={`mobile-tab-btn ${currentPath.startsWith('/reels') ? 'active' : ''}`}
-            onClick={() => navigate('/reels')}
-            title="Shorts & Reels"
-          >
-            <FilmIcon size={22} />
-          </button>
-
-          <button
-            className={`mobile-tab-btn ${currentPath.startsWith('/search') ? 'active' : ''}`}
+            type="button"
+            className={`mobile-tab-btn ${currentPath.startsWith('/search') || currentPath.startsWith('/discovery') ? 'active' : ''}`}
             onClick={() => navigate('/search')}
-            title="Search"
+            title="Explore"
+            aria-label="Explore"
           >
-            <SearchIcon size={22} />
+            <CompassIcon size={22} />
+            <span className="mobile-tab-text">Explore</span>
           </button>
 
+          {/* 3. Create Post (Center button) */}
           <button
+            type="button"
             className="mobile-tab-btn mobile-post-btn"
             onClick={handleOpenCreatePost}
             title="Create Post"
+            aria-label="Create Post"
           >
-            <PlusSquareIcon size={24} />
+            <PlusSquareIcon size={22} />
           </button>
 
-          {isAuthenticated && (
+          {/* 4. Messages (or Reels if not logged in) */}
+          {isAuthenticated ? (
             <button
+              type="button"
               className={`mobile-tab-btn relative-container ${currentPath.startsWith('/messages') ? 'active' : ''}`}
               onClick={() => navigate('/messages')}
               title="Messages"
+              aria-label="Messages"
             >
-              <MessageSquareIcon size={22} />
-              {unreadMessagesCount > 0 && (
-                <span className="nav-unread-badge">
-                  {unreadMessagesCount > 99 ? '99+' : unreadMessagesCount}
-                </span>
-              )}
+              <div className="relative-container">
+                <MessageSquareIcon size={22} />
+                {unreadMessagesCount > 0 && (
+                  <span className="nav-unread-badge">
+                    {unreadMessagesCount > 99 ? '99+' : unreadMessagesCount}
+                  </span>
+                )}
+              </div>
+              <span className="mobile-tab-text">Messages</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={`mobile-tab-btn ${currentPath.startsWith('/reels') ? 'active' : ''}`}
+              onClick={() => navigate('/reels')}
+              title="Shorts & Reels"
+              aria-label="Shorts & Reels"
+            >
+              <FilmIcon size={22} />
+              <span className="mobile-tab-text">Reels</span>
             </button>
           )}
 
+          {/* 5. Menu Drawer Toggle (All Sections: Communities, Opportunities, Spaces, Profile, etc.) */}
           <button
-            className={`mobile-tab-btn ${user && currentPath === `/profile/${user.username}` ? 'active' : ''}`}
-            onClick={() => navigate(user ? `/profile/${user.username}` : '/login')}
-            title="Profile"
+            type="button"
+            className={`mobile-tab-btn ${isMobileDrawerOpen ? 'active' : ''}`}
+            onClick={() => setIsMobileDrawerOpen(true)}
+            title="All Sections Menu"
+            aria-label="All Sections Menu"
           >
-            <UserIcon size={22} />
+            <div className="relative-container">
+              <MenuIcon size={22} />
+              {(unreadCount > 0 || unreadMessagesCount > 0) && (
+                <span className="nav-menu-alert-dot" />
+              )}
+            </div>
+            <span className="mobile-tab-text">Menu</span>
           </button>
         </nav>
       )}
+
+      {/* Mobile Navigation Drawer */}
+      <MobileNavDrawer
+        isOpen={isMobileDrawerOpen}
+        onClose={() => setIsMobileDrawerOpen(false)}
+        onOpenCreatePost={handleOpenCreatePost}
+        onOpenNotifications={() => setIsNotificationDrawerOpen(true)}
+        onOpenPrivacy={() => setIsPrivacyModalOpen(true)}
+        onOpenSettings={handleOpenSettings}
+      />
 
       {/* Global Modals */}
       <CreatePostModal
