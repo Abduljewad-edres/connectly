@@ -3,6 +3,11 @@ import ReelComment from '../models/ReelComment.js';
 import Follow from '../models/Follow.js';
 import User from '../models/User.js';
 import { createAndEmitNotification } from '../utils/socket.js';
+import {
+  isCloudinaryConfigured,
+  uploadVideoToCloudinary,
+  getOptimizedVideoUrl
+} from '../services/cloudinaryService.js';
 
 // Helper to extract hashtags from caption
 const extractHashtags = (text = '') => {
@@ -20,8 +25,23 @@ export const createReel = async (req, res) => {
     const { caption, visibility, videoUrl: rawVideoUrl, duration } = req.body;
 
     let videoUrl = '';
+    let videoDuration = Number(duration) || 0;
+
     if (req.file) {
-      videoUrl = `/uploads/${req.file.filename}`;
+      if (isCloudinaryConfigured()) {
+        try {
+          const uploadRes = await uploadVideoToCloudinary(req.file.path);
+          videoUrl = uploadRes.url;
+          if (uploadRes.duration && !videoDuration) {
+            videoDuration = Math.round(uploadRes.duration);
+          }
+        } catch (cloudErr) {
+          console.warn('[Reel] Cloudinary upload failed, falling back to local storage:', cloudErr.message);
+          videoUrl = `/uploads/${req.file.filename}`;
+        }
+      } else {
+        videoUrl = `/uploads/${req.file.filename}`;
+      }
     } else if (rawVideoUrl && typeof rawVideoUrl === 'string' && rawVideoUrl.trim()) {
       videoUrl = rawVideoUrl.trim();
     }
@@ -45,7 +65,7 @@ export const createReel = async (req, res) => {
       caption: captionText,
       tags,
       visibility: chosenVisibility,
-      duration: Number(duration) || 0,
+      duration: videoDuration,
       likes: [],
       commentsCount: 0,
       viewsCount: 0,
@@ -132,7 +152,7 @@ export const getReelsFeed = async (req, res) => {
       return {
         _id: reel._id,
         author: reel.author,
-        videoUrl: reel.videoUrl,
+        videoUrl: getOptimizedVideoUrl(reel.videoUrl),
         thumbnailUrl: reel.thumbnailUrl,
         caption: reel.caption,
         tags: reel.tags,

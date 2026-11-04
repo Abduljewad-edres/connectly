@@ -105,120 +105,129 @@ export const CreateReelModal = ({ isOpen, onClose, onReelCreated }) => {
         className="modal-card create-reel-modal"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="modal-header">
-          <div className="modal-title-row">
-            <VideoIcon size={20} className="text-primary" />
-            <h3 className="modal-title">Create Short Video / Reel</h3>
-          </div>
-          <button className="btn-icon" onClick={onClose} aria-label="Close modal">
-            <XIcon size={18} />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="modal-body create-reel-body">
-          {/* Dropzone or Video Preview */}
-          {!previewUrl ? (
-            <div
-              className="reel-dropzone"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <div className="reel-dropzone-icon">
-                <VideoIcon size={40} />
-              </div>
-              <h4>Upload Vertical Video</h4>
-              <p className="text-muted">
-                Select a short video up to 60s (MP4, WEBM, MOV up to 100MB)
-              </p>
-              <button
-                type="button"
-                className="btn btn-primary btn-sm mt-3"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  fileInputRef.current?.click();
-                }}
-              >
-                Choose Video File
-              </button>
+        <form onSubmit={handleSubmit} className="create-reel-form-wrapper">
+          <div className="modal-header">
+            <div className="modal-title-row">
+              <VideoIcon size={20} className="text-primary" />
+              <h3 className="modal-title">Create Short Video / Reel</h3>
             </div>
-          ) : (
-            <div className="reel-preview-container">
-              <video
-                ref={videoPreviewRef}
-                src={previewUrl}
-                className="reel-preview-video"
-                controls
-                autoPlay
-                loop
-                muted
-                onLoadedMetadata={handleLoadedMetadata}
-              />
-              <button
-                type="button"
-                className="btn-icon remove-reel-media-btn"
-                onClick={handleClearMedia}
-                title="Choose different video"
-              >
-                <XIcon size={18} />
-              </button>
-              {duration > 0 && (
-                <div className="reel-duration-badge">⏱️ {duration}s</div>
-              )}
-            </div>
-          )}
-
-          <input
-            type="file"
-            ref={fileInputRef}
-            accept="video/*"
-            style={{ display: 'none' }}
-            onChange={handleFileChange}
-          />
-
-          {/* Caption / Description Input */}
-          <div className="form-group mt-3">
-            <label className="form-label">Description & Hashtags</label>
-            <textarea
-              className="form-input reel-caption-textarea"
-              placeholder="Describe your video, tag creators with @username, or add #hashtags..."
-              rows={3}
-              maxLength={1000}
-              value={caption}
-              onChange={(e) => setCaption(e.target.value)}
-            />
-            {/* Quick Hashtag Pills */}
-            <div className="hashtag-suggestions mt-2">
-              <span className="text-muted text-xs mr-1">Trending:</span>
-              {['fyp', 'connectly', 'viral', 'trending', 'creator', 'tech'].map((tag) => (
-                <button
-                  key={tag}
-                  type="button"
-                  className="hashtag-pill-btn"
-                  onClick={() => handleAddHashtag(tag)}
-                >
-                  #{tag}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Visibility */}
-          <div className="form-group">
-            <label className="form-label">Visibility</label>
-            <select
-              className="form-select"
-              value={visibility}
-              onChange={(e) => setVisibility(e.target.value)}
-            >
-              <option value="public">🌍 Public (Shown in Reels Feed & Explore)</option>
-              <option value="followers">👥 Followers Only</option>
-            </select>
-          </div>
-
-          {/* Actions */}
-          <div className="modal-actions mt-4">
             <button
               type="button"
-              className="btn btn-outline"
+              className="btn-icon"
+              onClick={onClose}
+              aria-label="Close modal"
+              disabled={loading}
+            >
+              <XIcon size={18} />
+            </button>
+          </div>
+
+          <div className="create-reel-body-scrollable">
+            {/* Dropzone or Video Preview */}
+            {!previewUrl ? (
+              <div
+                className="reel-dropzone"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <div className="reel-dropzone-icon">
+                  <VideoIcon size={40} />
+                </div>
+                <h4>Upload Vertical Video</h4>
+                <p className="text-muted">
+                  Select a short video up to 60s (MP4, WEBM, MOV up to 100MB)
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm mt-3"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    fileInputRef.current?.click();
+                  }}
+                >
+                  Choose Video File
+                </button>
+              </div>
+            ) : (
+              <div className="reel-preview-container">
+                <video
+                  ref={videoPreviewRef}
+                  src={previewUrl}
+                  className="reel-preview-video"
+                  controls
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  onLoadedMetadata={handleLoadedMetadata}
+                />
+                <button
+                  type="button"
+                  className="btn-icon remove-reel-media-btn"
+                  onClick={handleClearMedia}
+                  title="Choose different video"
+                >
+                  <XIcon size={18} />
+                </button>
+                {duration > 0 && (
+                  <div className="reel-duration-badge">⏱️ {duration}s</div>
+                )}
+              </div>
+            )}
+
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept="video/*"
+              style={{ display: 'none' }}
+              onChange={handleFileChange}
+            />
+
+            {/* Caption / Description Input */}
+            <div className="form-group mt-3">
+              <label className="form-label">Description & Hashtags</label>
+              <textarea
+                className="form-input reel-caption-textarea"
+                placeholder="Describe your video, tag creators with @username, or add #hashtags..."
+                rows={3}
+                maxLength={1000}
+                value={caption}
+                onChange={(e) => setCaption(e.target.value)}
+              />
+              {/* Quick Hashtag Pills */}
+              <div className="hashtag-suggestions mt-2">
+                <span className="text-muted text-xs mr-1">Trending:</span>
+                {['fyp', 'connectly', 'viral', 'trending', 'creator', 'tech'].map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    className="hashtag-pill-btn"
+                    onClick={() => handleAddHashtag(tag)}
+                  >
+                    #{tag}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Visibility */}
+            <div className="form-group">
+              <label className="form-label">Visibility</label>
+              <select
+                className="form-select"
+                value={visibility}
+                onChange={(e) => setVisibility(e.target.value)}
+              >
+                <option value="public">🌍 Public (Shown in Reels Feed & Explore)</option>
+                <option value="followers">👥 Followers Only</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Sticky Actions Footer - Guaranteed visible across all screen sizes */}
+          <div className="create-reel-sticky-footer">
+            <button
+              type="button"
+              className="btn btn-outline create-reel-btn-cancel"
               onClick={onClose}
               disabled={loading}
             >
@@ -226,7 +235,7 @@ export const CreateReelModal = ({ isOpen, onClose, onReelCreated }) => {
             </button>
             <button
               type="submit"
-              className="btn btn-primary"
+              className="btn btn-primary create-reel-btn-submit"
               disabled={loading || !selectedFile}
             >
               {loading ? (

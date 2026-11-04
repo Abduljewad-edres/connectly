@@ -330,8 +330,17 @@ const ReelCard = React.forwardRef(
     const { navigate } = useRouter();
     const videoRef = useRef(null);
     const [isPlaying, setIsPlaying] = useState(false);
+    const [isBuffering, setIsBuffering] = useState(false);
+    const [videoError, setVideoError] = useState(false);
     const [showPlayBadge, setShowPlayBadge] = useState(false);
     const [progress, setProgress] = useState(0);
+
+    // Sync muted state directly to DOM element
+    useEffect(() => {
+      if (videoRef.current) {
+        videoRef.current.muted = isMuted;
+      }
+    }, [isMuted]);
 
     // IntersectionObserver to auto play/pause when in view
     useEffect(() => {
@@ -343,13 +352,27 @@ const ReelCard = React.forwardRef(
           entries.forEach((entry) => {
             if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
               onIntersecting();
+              videoEl.muted = isMuted;
               videoEl
                 .play()
-                .then(() => setIsPlaying(true))
-                .catch(() => {});
+                .then(() => {
+                  setIsPlaying(true);
+                  setIsBuffering(false);
+                })
+                .catch(() => {
+                  // Fallback for strict browser autoplay policies: mute & retry
+                  videoEl.muted = true;
+                  videoEl
+                    .play()
+                    .then(() => setIsPlaying(true))
+                    .catch(() => {
+                      setIsPlaying(false);
+                    });
+                });
             } else {
               videoEl.pause();
               setIsPlaying(false);
+              setIsBuffering(false);
             }
           });
         },
@@ -358,15 +381,16 @@ const ReelCard = React.forwardRef(
 
       observer.observe(videoEl);
       return () => observer.disconnect();
-    }, [onIntersecting]);
+    }, [onIntersecting, isMuted]);
 
     const handleVideoClick = () => {
       const v = videoRef.current;
       if (!v) return;
 
       if (v.paused) {
-        v.play();
-        setIsPlaying(true);
+        v.play()
+          .then(() => setIsPlaying(true))
+          .catch(() => {});
       } else {
         v.pause();
         setIsPlaying(false);
@@ -379,6 +403,24 @@ const ReelCard = React.forwardRef(
       if (videoRef.current && videoRef.current.duration) {
         const p = (videoRef.current.currentTime / videoRef.current.duration) * 100;
         setProgress(p);
+      }
+    };
+
+    const handleRetryVideo = (e) => {
+      e.stopPropagation();
+      setVideoError(false);
+      setIsBuffering(true);
+      if (videoRef.current) {
+        videoRef.current.load();
+        videoRef.current
+          .play()
+          .then(() => {
+            setIsPlaying(true);
+            setIsBuffering(false);
+          })
+          .catch(() => {
+            setIsBuffering(false);
+          });
       }
     };
 
@@ -397,13 +439,49 @@ const ReelCard = React.forwardRef(
             className="reel-video-player"
             loop
             playsInline
+            preload="metadata"
             muted={isMuted}
             onClick={handleVideoClick}
             onTimeUpdate={handleTimeUpdate}
+            onWaiting={() => setIsBuffering(true)}
+            onPlaying={() => {
+              setIsBuffering(false);
+              setIsPlaying(true);
+            }}
+            onCanPlay={() => setIsBuffering(false)}
+            onError={() => {
+              setVideoError(true);
+              setIsBuffering(false);
+            }}
           />
 
+          {/* Buffering Spinner */}
+          {isBuffering && !videoError && (
+            <div className="reel-buffering-overlay">
+              <div className="reel-buffering-spinner"></div>
+            </div>
+          )}
+
+          {/* Video Error Fallback */}
+          {videoError && (
+            <div className="reel-error-overlay">
+              <div className="reel-error-box">
+                <VideoIcon size={36} className="text-muted mb-2" />
+                <p className="reel-error-title">Video temporarily unavailable</p>
+                <p className="reel-error-sub">Could not load this video stream</p>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary mt-2"
+                  onClick={handleRetryVideo}
+                >
+                  Retry Video
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Centered Play/Pause Animated Indicator */}
-          {showPlayBadge && (
+          {showPlayBadge && !isBuffering && (
             <div className="reel-play-indicator">
               {isPlaying ? <PlayIcon size={48} /> : <PauseIcon size={48} />}
             </div>

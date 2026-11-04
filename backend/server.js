@@ -54,7 +54,67 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Static directory for uploaded images
+// HTTP 206 Partial Content Range streaming middleware for uploaded videos (MP4, WEBM, MOV)
+app.get('/uploads/:filename', (req, res, next) => {
+  const filePath = path.join(__dirname, 'uploads', req.params.filename);
+  const ext = path.extname(filePath).toLowerCase();
+
+  if (!['.mp4', '.webm', '.mov', '.mkv', '.avi', '.m4v'].includes(ext)) {
+    return next();
+  }
+
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ success: false, message: 'Video file not found' });
+  }
+
+  const stat = fs.statSync(filePath);
+  const fileSize = stat.size;
+  const range = req.headers.range;
+
+  const mimeTypes = {
+    '.mp4': 'video/mp4',
+    '.webm': 'video/webm',
+    '.mov': 'video/quicktime',
+    '.mkv': 'video/x-matroska',
+    '.m4v': 'video/x-m4v'
+  };
+  const contentType = mimeTypes[ext] || 'video/mp4';
+
+  if (range) {
+    const parts = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+    if (start >= fileSize || end >= fileSize) {
+      res.status(416).setHeader('Content-Range', `bytes */${fileSize}`);
+      return res.end();
+    }
+
+    const chunksize = end - start + 1;
+    const file = fs.createReadStream(filePath, { start, end });
+    const head = {
+      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+      'Accept-Ranges': 'bytes',
+      'Content-Length': chunksize,
+      'Content-Type': contentType,
+      'Cache-Control': 'public, max-age=86400'
+    };
+
+    res.writeHead(206, head);
+    file.pipe(res);
+  } else {
+    const head = {
+      'Content-Length': fileSize,
+      'Content-Type': contentType,
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'public, max-age=86400'
+    };
+    res.writeHead(200, head);
+    fs.createReadStream(filePath).pipe(res);
+  }
+});
+
+// Static directory for uploaded images and other assets
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Health check / API status endpoints

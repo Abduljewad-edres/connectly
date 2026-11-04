@@ -94,6 +94,16 @@ self.addEventListener('fetch', (event) => {
     return; // Pass through directly to Vite
   }
 
+  // 5. NEVER intercept media streaming (video/audio) or HTTP Range requests
+  // Browsers require direct Range responses for video chunk buffering
+  if (
+    request.headers.has('range') ||
+    url.pathname.match(/\.(mp4|webm|mov|mkv|avi|m4v|3gp|mp3|wav|ogg|m4a)$/i) ||
+    (url.pathname.startsWith('/uploads/') && url.pathname.match(/\.(mp4|webm|mov|mkv)$/i))
+  ) {
+    return; // Pass through directly to network for byte-range streaming
+  }
+
   // 5. Handle Navigation Requests (HTML pages / SPA routes like /profile, /search, /messages)
   if (request.mode === 'navigate') {
     event.respondWith(

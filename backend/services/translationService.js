@@ -265,18 +265,65 @@ const generateContentHash = (text, sourceLang, targetLang) => {
     .digest('hex');
 };
 
+// Helper to decode HTML entities returned by external translation APIs
+const decodeHtmlEntities = (str = '') => {
+  if (!str || typeof str !== 'string') return '';
+  return str
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(dec));
+};
+
 /**
- * Fetch from public provider with strict timeout
+ * Fetch from genuine translation provider with resilient timeout & failover
  */
 const fetchFromExternalProvider = async (text, sourceLang, targetLang) => {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 3500);
+  const timeoutId = setTimeout(() => controller.abort(), 12000); // 12 seconds for reliable global API response
 
+  const src = sourceLang === 'om' ? 'om' : sourceLang;
+  const tgt = targetLang === 'om' ? 'om' : targetLang;
+
+  // 1. Check for official Google Cloud Translation API Key if configured
+  const googleApiKey = process.env.GOOGLE_TRANSLATE_API_KEY || process.env.TRANSLATION_API_KEY;
+  if (googleApiKey) {
+    try {
+      const gUrl = `https://translation.googleapis.com/language/translate/v2?key=${googleApiKey}`;
+      const gRes = await fetch(gUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          q: text,
+          source: src,
+          target: tgt,
+          format: 'text'
+        }),
+        signal: controller.signal
+      });
+
+      if (gRes.ok) {
+        const gData = await gRes.json();
+        const translated = gData?.data?.translations?.[0]?.translatedText;
+        if (translated && translated.trim() !== text.trim()) {
+          clearTimeout(timeoutId);
+          return {
+            translatedText: decodeHtmlEntities(translated.trim()),
+            provider: 'google-cloud-translate'
+          };
+        }
+      }
+    } catch (gErr) {
+      console.warn('[TranslationService] Google Cloud API error, trying fallback:', gErr.message);
+    }
+  }
+
+  // 2. MyMemory Translation API (Official Free & Pro Tier)
   try {
-    // MyMemory Free Translation API
-    const src = sourceLang === 'om' ? 'om' : sourceLang;
-    const tgt = targetLang === 'om' ? 'om' : targetLang;
-    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${src}|${tgt}`;
+    const emailParam = process.env.MYMEMORY_EMAIL ? `&de=${encodeURIComponent(process.env.MYMEMORY_EMAIL)}` : '';
+    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${src}|${tgt}${emailParam}`;
 
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timeoutId);
@@ -286,18 +333,24 @@ const fetchFromExternalProvider = async (text, sourceLang, targetLang) => {
       if (
         data &&
         data.responseData &&
-        data.responseData.translatedText &&
-        !data.responseData.translatedText.toUpperCase().includes('MYMEMORY WARNING') &&
-        data.responseData.translatedText !== text
+        data.responseData.translatedText
       ) {
-        return {
-          translatedText: data.responseData.translatedText,
-          provider: 'mymemory-api'
-        };
+        const rawTranslated = data.responseData.translatedText.trim();
+        const isWarning = rawTranslated.toUpperCase().includes('MYMEMORY WARNING') ||
+                          rawTranslated.toUpperCase().includes('IS AN INVALID TARGET LANGUAGE') ||
+                          rawTranslated.toUpperCase().includes('QUERY LENGTH LIMIT EXCEEDED');
+
+        if (!isWarning && rawTranslated !== text.trim()) {
+          return {
+            translatedText: decodeHtmlEntities(rawTranslated),
+            provider: 'mymemory-api'
+          };
+        }
       }
     }
   } catch (err) {
-    // Provider offline or timed out; continue to fallback
+    // Timeout or network error
+    console.warn('[TranslationService] External provider request notice:', err.message);
   } finally {
     clearTimeout(timeoutId);
   }
@@ -373,18 +426,8 @@ const translateWithInternalEngine = (text, sourceLang, targetLang) => {
     return finalTrans.trim();
   }
 
-  // 4. If no words matched and target is different, return a translated contextual greeting/message
-  if (targetLang === 'ar') {
-    return `[ترجمة كونيكتلي]: ${text}`;
-  }
-  if (targetLang === 'am') {
-    return `[የኮኔክትሊ ትርጉም]: ${text}`;
-  }
-  if (targetLang === 'om') {
-    return `[Hiika Connectly]: ${text}`;
-  }
-
-  return text;
+  // 4. If no words matched and target is different, return null (never fake translations)
+  return null;
 };
 
 /**
@@ -399,8 +442,8 @@ export const translateContent = async ({ text, targetLang = 'en', sourceLang }) 
   if (!text || typeof text !== 'string' || !text.trim()) {
     return {
       success: true,
-      originalText: text,
-      translatedText: text,
+      originalText: text || '',
+      translatedText: text || '',
       sourceLanguage: sourceLang || 'en',
       targetLanguage: targetLang,
       cached: false,
@@ -432,42 +475,69 @@ export const translateContent = async ({ text, targetLang = 'en', sourceLang }) 
 
   const contentHash = generateContentHash(cleanText, detectedSource, validTarget);
 
-  // 1. Check MongoDB cache first if database connected (BR-NFR: Do not translate repeatedly)
+  // 1. Check MongoDB cache first if database connected
   if (mongoose.connection && mongoose.connection.readyState === 1) {
     try {
       const cachedEntry = await TranslationCache.findOne({ contentHash });
-      if (cachedEntry && cachedEntry.translatedText && cachedEntry.translatedText.trim() !== cleanText) {
-        // Increment hit count asynchronously
-        TranslationCache.updateOne({ _id: cachedEntry._id }, { $inc: { hitCount: 1 } }).exec();
+      if (cachedEntry && cachedEntry.translatedText) {
+        const cachedText = cachedEntry.translatedText.trim();
+        // Discard and delete stale or poisoned cache entries that merely echoed the original text
+        const isPoisoned = cachedText === cleanText ||
+          cachedText.startsWith('[የኮኔክትሊ ትርጉም]') ||
+          cachedText.startsWith('[Hiika Connectly]') ||
+          cachedText.startsWith('[ترجمة كونيكتلي]');
 
-        return {
-          success: true,
-          originalText: cleanText,
-          translatedText: cachedEntry.translatedText,
-          sourceLanguage: cachedEntry.sourceLanguage,
-          targetLanguage: cachedEntry.targetLanguage,
-          cached: true,
-          provider: cachedEntry.provider
-        };
+        if (isPoisoned) {
+          TranslationCache.deleteOne({ _id: cachedEntry._id }).exec().catch(() => {});
+        } else {
+          // Increment hit count asynchronously
+          TranslationCache.updateOne({ _id: cachedEntry._id }, { $inc: { hitCount: 1 } }).exec();
+
+          return {
+            success: true,
+            originalText: cleanText,
+            translatedText: cachedText,
+            sourceLanguage: cachedEntry.sourceLanguage || detectedSource,
+            targetLanguage: cachedEntry.targetLanguage || validTarget,
+            cached: true,
+            provider: cachedEntry.provider || 'cached-translation'
+          };
+        }
       }
     } catch (dbErr) {
       console.error('[TranslationService] Cache query error:', dbErr.message);
     }
   }
 
-  // 2. Attempt external provider
+  // 2. Attempt genuine external provider (MyMemory or Google Cloud)
   let translationResult = await fetchFromExternalProvider(cleanText, detectedSource, validTarget);
 
-  // 3. Fallback to internal engine if external fails or returns empty
+  // 3. Fallback to internal verified phrase/word engine if external fails
   if (!translationResult) {
     const internalText = translateWithInternalEngine(cleanText, detectedSource, validTarget);
-    translationResult = {
-      translatedText: internalText,
-      provider: 'connectly-internal-bridge'
+    if (internalText && internalText.trim() !== cleanText) {
+      translationResult = {
+        translatedText: internalText.trim(),
+        provider: 'connectly-internal-bridge'
+      };
+    }
+  }
+
+  // 4. If genuine translation could not be obtained, return clear failure without faking
+  if (!translationResult || !translationResult.translatedText || translationResult.translatedText.trim() === cleanText) {
+    return {
+      success: false,
+      originalText: cleanText,
+      translatedText: cleanText,
+      sourceLanguage: detectedSource,
+      targetLanguage: validTarget,
+      cached: false,
+      provider: 'none',
+      message: `Translation from ${detectedSource.toUpperCase()} to ${validTarget.toUpperCase()} is currently unavailable. Please verify connection and try again.`
     };
   }
 
-  // 4. Save result to MongoDB cache if database is connected
+  // 5. Save verified genuine result to MongoDB cache
   if (mongoose.connection && mongoose.connection.readyState === 1) {
     try {
       await TranslationCache.create({
@@ -480,7 +550,6 @@ export const translateContent = async ({ text, targetLang = 'en', sourceLang }) 
         hitCount: 1
       });
     } catch (saveErr) {
-      // If concurrent insert occurs, ignore duplicate key error
       if (saveErr.code !== 11000) {
         console.error('[TranslationService] Cache save error:', saveErr.message);
       }
