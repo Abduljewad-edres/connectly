@@ -1,3 +1,6 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import Reel from '../models/Reel.js';
 import ReelComment from '../models/ReelComment.js';
 import Follow from '../models/Follow.js';
@@ -5,9 +8,13 @@ import User from '../models/User.js';
 import { createAndEmitNotification } from '../utils/socket.js';
 import {
   isCloudinaryConfigured,
+  ensureCloudinaryConfigured,
   uploadVideoToCloudinary,
   getOptimizedVideoUrl
 } from '../services/cloudinaryService.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Helper to extract hashtags from caption
 const extractHashtags = (text = '') => {
@@ -28,18 +35,19 @@ export const createReel = async (req, res) => {
     let videoDuration = Number(duration) || 0;
 
     if (req.file) {
-      if (isCloudinaryConfigured()) {
+      if (ensureCloudinaryConfigured()) {
         try {
-          const uploadRes = await uploadVideoToCloudinary(req.file.path);
+          const uploadRes = await uploadVideoToCloudinary(req.file.path, { folder: 'connectly/reels' });
           videoUrl = uploadRes.url;
           if (uploadRes.duration && !videoDuration) {
             videoDuration = Math.round(uploadRes.duration);
           }
         } catch (cloudErr) {
-          console.warn('[Reel] Cloudinary upload failed, falling back to local storage:', cloudErr.message);
+          console.error('[Reel] Cloudinary upload failed:', cloudErr.message || cloudErr);
           videoUrl = `/uploads/${req.file.filename}`;
         }
       } else {
+        console.warn('[Reel] Cloudinary credentials not configured; saving video locally.');
         videoUrl = `/uploads/${req.file.filename}`;
       }
     } else if (rawVideoUrl && typeof rawVideoUrl === 'string' && rawVideoUrl.trim()) {
@@ -140,7 +148,16 @@ export const getReelsFeed = async (req, res) => {
       followingIds = new Set(followDocs.map((f) => f.following.toString()));
     }
 
-    const formatted = reels.map((reel) => {
+    // Filter out reels whose ephemeral local files were wiped by server restart
+    const validReels = reels.filter((r) => {
+      if (r.videoUrl && r.videoUrl.startsWith('/uploads/')) {
+        const localPath = path.join(__dirname, '..', r.videoUrl);
+        return fs.existsSync(localPath);
+      }
+      return true; // Cloudinary or external CDN URL is always permanent
+    });
+
+    const formatted = validReels.map((reel) => {
       const isLiked = currentUserId
         ? reel.likes.some((id) => id.toString() === currentUserId.toString())
         : false;

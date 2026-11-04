@@ -1,9 +1,21 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import Story from '../models/Story.js';
 import Follow from '../models/Follow.js';
 import User from '../models/User.js';
 import Conversation from '../models/Conversation.js';
 import Message from '../models/Message.js';
 import { createAndEmitNotification, emitNewMessage } from '../utils/socket.js';
+import {
+  saveImagePermanently,
+  uploadVideoToCloudinary,
+  ensureCloudinaryConfigured,
+  isCloudinaryConfigured
+} from '../services/cloudinaryService.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Helper to determine media type
 const isVideoFile = (filename = '', mimetype = '') => {
@@ -22,9 +34,23 @@ export const createStory = async (req, res) => {
     let mediaType = 'image';
 
     if (req.file) {
-      mediaUrl = `/uploads/${req.file.filename}`;
       if (isVideoFile(req.file.filename, req.file.mimetype)) {
         mediaType = 'video';
+        if (ensureCloudinaryConfigured()) {
+          try {
+            const res = await uploadVideoToCloudinary(req.file.path, { folder: 'connectly/stories' });
+            mediaUrl = res.url;
+          } catch (cErr) {
+            console.error('[Story] Cloudinary video upload failed:', cErr.message || cErr);
+            mediaUrl = `/uploads/${req.file.filename}`;
+          }
+        } else {
+          console.warn('[Story] Cloudinary credentials not configured; saving video locally.');
+          mediaUrl = `/uploads/${req.file.filename}`;
+        }
+      } else {
+        mediaType = 'image';
+        mediaUrl = await saveImagePermanently(req.file, 'connectly/stories');
       }
     } else if (rawUrl && typeof rawUrl === 'string' && rawUrl.trim()) {
       mediaUrl = rawUrl.trim();
@@ -105,6 +131,15 @@ export const getFeedStories = async (req, res) => {
 
     for (const story of activeStories) {
       if (!story.author) continue;
+
+      // Filter out ephemeral local files that were wiped on server restart
+      if (story.mediaUrl && story.mediaUrl.startsWith('/uploads/')) {
+        const localPath = path.join(__dirname, '..', story.mediaUrl);
+        if (!fs.existsSync(localPath)) {
+          continue; // Ephemeral file was wiped by host restart, skip dead story
+        }
+      }
+
       const authorId = story.author._id.toString();
 
       // Privacy check: If privacy === 'followers', verify if current user is author or follower

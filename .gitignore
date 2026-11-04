@@ -3,8 +3,8 @@ node_modules/
 */node_modules/
 
 # Production Build
+# Keep frontend/dist and backend/public to guarantee instant static asset delivery on Render
 dist/
-frontend/dist/
 
 # Environment Variables & Secrets (CRITICAL SECURITY)
 .env

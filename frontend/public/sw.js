@@ -10,7 +10,7 @@
  * - Clean update lifecycle with skipWaiting support.
  */
 
-const CACHE_VERSION = 'connectly-v1.0.0';
+const CACHE_VERSION = 'connectly-v1.0.1';
 const STATIC_CACHE = `connectly-static-${CACHE_VERSION}`;
 const IMMUTABLE_CACHE = `connectly-immutable-${CACHE_VERSION}`;
 

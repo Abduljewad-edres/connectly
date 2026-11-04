@@ -6,6 +6,7 @@ import Report from '../models/Report.js';
 import { createAndEmitNotification, emitNewPost } from '../utils/socket.js';
 import {
   isCloudinaryConfigured,
+  ensureCloudinaryConfigured,
   uploadVideoToCloudinary,
   saveImagePermanently
 } from '../services/cloudinaryService.js';
@@ -76,16 +77,18 @@ export const createPost = async (req, res) => {
       for (const file of allFiles) {
         if (file.mimetype.startsWith('video/') || isVideoFile(file.filename)) {
           let fileUrl = `/uploads/${file.filename}`;
-          if (isCloudinaryConfigured()) {
+          if (ensureCloudinaryConfigured()) {
             try {
-              const cRes = await uploadVideoToCloudinary(file.path);
+              const cRes = await uploadVideoToCloudinary(file.path, { folder: 'connectly/posts' });
               fileUrl = cRes.url;
-            } catch (_) {}
+            } catch (vErr) {
+              console.error('[Post] Video upload to Cloudinary failed:', vErr.message || vErr);
+            }
           }
           finalMedia.push({ type: 'video', url: fileUrl });
           if (!finalVideoUrl) finalVideoUrl = fileUrl;
         } else {
-          const fileUrl = await saveImagePermanently(file);
+          const fileUrl = await saveImagePermanently(file, 'connectly/posts');
           finalMedia.push({ type: 'image', url: fileUrl });
           finalImageUrls.push(fileUrl);
         }
@@ -93,11 +96,13 @@ export const createPost = async (req, res) => {
     } else if (req.file) {
       if (req.file.mimetype.startsWith('video/') || isVideoFile(req.file.filename)) {
         let fileUrl = `/uploads/${req.file.filename}`;
-        if (isCloudinaryConfigured()) {
+        if (ensureCloudinaryConfigured()) {
           try {
-            const cRes = await uploadVideoToCloudinary(req.file.path);
+            const cRes = await uploadVideoToCloudinary(req.file.path, { folder: 'connectly/posts' });
             fileUrl = cRes.url;
-          } catch (_) {}
+          } catch (vErr) {
+            console.error('[Post] Video upload to Cloudinary failed:', vErr.message || vErr);
+          }
         }
         finalMedia.push({ type: 'video', url: fileUrl });
         finalVideoUrl = fileUrl;

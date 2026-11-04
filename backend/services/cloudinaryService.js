@@ -1,32 +1,87 @@
 import { v2 as cloudinary } from 'cloudinary';
 import fs from 'fs';
 import path from 'path';
+import dotenv from 'dotenv';
+
+// Ensure environment variables are loaded
+dotenv.config();
+
+/**
+ * Ultra-resilient Cloudinary credential parser
+ * Automatically cleans:
+ * - "CLOUDINARY_URL=cloudinary://..." prefix if user copied the full key-value line
+ * - Quotes like "cloudinary://..." or 'cloudinary://...'
+ * - Trailing or leading whitespace
+ * - Separate variables CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET
+ */
+export const getCleanCloudinaryConfig = () => {
+  let rawUrl = (process.env.CLOUDINARY_URL || '').trim();
+
+  // Strip enclosing quotes if present
+  while (rawUrl.startsWith('"') || rawUrl.startsWith("'")) rawUrl = rawUrl.slice(1);
+  while (rawUrl.endsWith('"') || rawUrl.endsWith("'")) rawUrl = rawUrl.slice(0, -1);
+  rawUrl = rawUrl.trim();
+
+  // Strip leading "CLOUDINARY_URL=" if user accidentally pasted key name into Render's value field
+  if (rawUrl.startsWith('CLOUDINARY_URL=')) {
+    rawUrl = rawUrl.slice('CLOUDINARY_URL='.length).trim();
+    while (rawUrl.startsWith('"') || rawUrl.startsWith("'")) rawUrl = rawUrl.slice(1);
+    while (rawUrl.endsWith('"') || rawUrl.endsWith("'")) rawUrl = rawUrl.slice(0, -1);
+    rawUrl = rawUrl.trim();
+  }
+
+  if (rawUrl.startsWith('cloudinary://')) {
+    const match = rawUrl.match(/^cloudinary:\/\/([^:]+):([^@]+)@(.+)$/);
+    if (match) {
+      return {
+        api_key: match[1].trim(),
+        api_secret: match[2].trim(),
+        cloud_name: match[3].trim(),
+        secure: true
+      };
+    }
+  }
+
+  // Also check separate environment variables
+  const cloudName = (process.env.CLOUDINARY_CLOUD_NAME || '').trim().replace(/^["']|["']$/g, '');
+  const apiKey = (process.env.CLOUDINARY_API_KEY || '').trim().replace(/^["']|["']$/g, '');
+  const apiSecret = (process.env.CLOUDINARY_API_SECRET || '').trim().replace(/^["']|["']$/g, '');
+
+  if (cloudName && apiKey && apiSecret) {
+    return {
+      cloud_name: cloudName,
+      api_key: apiKey,
+      api_secret: apiSecret,
+      secure: true
+    };
+  }
+
+  return null;
+};
+
+/**
+ * Configure Cloudinary on-the-fly before every upload
+ */
+export const ensureCloudinaryConfigured = () => {
+  const cfg = getCleanCloudinaryConfig();
+  if (cfg) {
+    cloudinary.config(cfg);
+    return true;
+  }
+  return false;
+};
 
 // Check if Cloudinary is configured via environment variables
 export const isCloudinaryConfigured = () => {
-  return Boolean(
-    process.env.CLOUDINARY_URL ||
-    (process.env.CLOUDINARY_CLOUD_NAME &&
-     process.env.CLOUDINARY_API_KEY &&
-     process.env.CLOUDINARY_API_SECRET)
-  );
+  return Boolean(getCleanCloudinaryConfig());
 };
 
-// Initialize Cloudinary
-if (isCloudinaryConfigured()) {
-  if (process.env.CLOUDINARY_URL) {
-    cloudinary.config();
-  } else {
-    cloudinary.config({
-      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-      api_key: process.env.CLOUDINARY_API_KEY,
-      api_secret: process.env.CLOUDINARY_API_SECRET,
-      secure: true
-    });
-  }
-  console.log('[Cloudinary] Cloudinary media delivery initialized successfully.');
+// Initialize once at startup if credentials present
+if (ensureCloudinaryConfigured()) {
+  const cfg = getCleanCloudinaryConfig();
+  console.log(`[Cloudinary] Initialized successfully with cloud_name: "${cfg.cloud_name}"`);
 } else {
-  console.log('[Cloudinary] Cloudinary credentials not detected; using local storage with HTTP 206 Range streaming.');
+  console.log('[Cloudinary] Cloudinary credentials not detected yet; local fallback active.');
 }
 
 /**
@@ -36,23 +91,22 @@ if (isCloudinaryConfigured()) {
  * @returns {Promise<Object>} Upload result { url, duration, format, public_id }
  */
 export const uploadVideoToCloudinary = async (filePath, options = {}) => {
-  if (!isCloudinaryConfigured()) {
+  if (!ensureCloudinaryConfigured()) {
     throw new Error('Cloudinary is not configured in environment variables.');
   }
+
+  const cfg = getCleanCloudinaryConfig();
+  console.log(`[Cloudinary] Uploading video to cloud "${cfg?.cloud_name}": ${path.basename(filePath)}`);
 
   try {
     const result = await cloudinary.uploader.upload(filePath, {
       resource_type: 'video',
-      folder: 'connectly/reels',
+      folder: options.folder || 'connectly/reels',
       chunk_size: 6000000, // 6MB chunks for large files
-      eager_async: true,
-      allowed_formats: ['mp4', 'webm', 'mov', 'mkv', 'avi', 'm4v', '3gp'],
-      transformation: [
-        { quality: 'auto:good' },
-        { fetch_format: 'auto' }
-      ],
       ...options
     });
+
+    console.log('[Cloudinary] Video upload success! CDN URL:', result.secure_url || result.url);
 
     // Clean up local temp file after upload
     try {
@@ -72,7 +126,7 @@ export const uploadVideoToCloudinary = async (filePath, options = {}) => {
       thumbnailUrl: result.secure_url?.replace(/\.[^/.]+$/, '.jpg') || ''
     };
   } catch (err) {
-    console.error('[Cloudinary] Video upload error:', err);
+    console.error('[Cloudinary] Video upload error:', err.message || err);
     throw err;
   }
 };

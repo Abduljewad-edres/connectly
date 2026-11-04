@@ -1,7 +1,9 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import http from 'http';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -30,8 +32,7 @@ import opportunityRoutes from './routes/opportunityRoutes.js';
 import discoveryRoutes from './routes/discoveryRoutes.js';
 import liveSpaceRoutes from './routes/liveSpaceRoutes.js';
 
-// Load environment variables
-dotenv.config();
+// Path utilities
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -157,9 +158,15 @@ app.use('/api/opportunities', opportunityRoutes);
 app.use('/api/discovery', discoveryRoutes);
 app.use('/api/spaces', liveSpaceRoutes);
 
-// Serve frontend client in production or when dist exists
-const frontendDist = path.join(__dirname, '../frontend/dist');
-if (fs.existsSync(frontendDist)) {
+// Serve frontend client in production or when dist/public exists
+const candidatePaths = [
+  path.join(__dirname, '../frontend/dist'),
+  path.join(__dirname, 'public'),
+  path.join(__dirname, 'dist')
+];
+const frontendDist = candidatePaths.find((p) => fs.existsSync(path.join(p, 'index.html')));
+
+if (frontendDist) {
   console.log(`[Server] Serving production frontend build from ${frontendDist}`);
   app.use(express.static(frontendDist, {
     setHeaders: (res, filePath) => {
@@ -169,6 +176,8 @@ if (fs.existsSync(frontendDist)) {
       } else if (filePath.endsWith('manifest.json')) {
         res.setHeader('Content-Type', 'application/manifest+json');
         res.setHeader('Cache-Control', 'public, max-age=3600');
+      } else if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       }
     }
   }));
@@ -178,17 +187,22 @@ if (fs.existsSync(frontendDist)) {
     if (req.originalUrl.startsWith('/api') || req.originalUrl.startsWith('/uploads') || req.originalUrl.startsWith('/socket.io')) {
       return next();
     }
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.sendFile(path.join(frontendDist, 'index.html'));
   });
 } else {
-  // If running backend standalone without frontend build, show API info on root
+  // If running backend standalone in dev without build
   app.get('/', (req, res) => {
-    res.json({
-      status: 'online',
-      project: 'Connectly API',
-      tagline: 'Connect. Share. Belong.',
-      version: '1.0'
-    });
+    res.status(200).send(`<!DOCTYPE html>
+<html>
+<head><title>Connectly</title><meta http-equiv="refresh" content="3"></head>
+<body style="font-family:sans-serif;background:#0b0f19;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;">
+  <h2>Connectly is launching...</h2>
+  <p style="color:#94a3b8;">Frontend assets are loading. This page will refresh automatically.</p>
+</body>
+</html>`);
   });
 }
 
