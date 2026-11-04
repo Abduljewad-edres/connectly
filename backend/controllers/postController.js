@@ -3,7 +3,12 @@ import Comment from '../models/Comment.js';
 import Follow from '../models/Follow.js';
 import User from '../models/User.js';
 import Report from '../models/Report.js';
-import { createAndEmitNotification } from '../utils/socket.js';
+import { createAndEmitNotification, emitNewPost } from '../utils/socket.js';
+import {
+  isCloudinaryConfigured,
+  uploadVideoToCloudinary,
+  saveImagePermanently
+} from '../services/cloudinaryService.js';
 
 // Helper to determine media type from extension or mimetype
 const isVideoFile = (urlOrName = '') => {
@@ -68,22 +73,36 @@ export const createPost = async (req, res) => {
         ...(req.files.media || [])
       ];
 
-      allFiles.forEach((file) => {
-        const fileUrl = `/uploads/${file.filename}`;
+      for (const file of allFiles) {
         if (file.mimetype.startsWith('video/') || isVideoFile(file.filename)) {
+          let fileUrl = `/uploads/${file.filename}`;
+          if (isCloudinaryConfigured()) {
+            try {
+              const cRes = await uploadVideoToCloudinary(file.path);
+              fileUrl = cRes.url;
+            } catch (_) {}
+          }
           finalMedia.push({ type: 'video', url: fileUrl });
           if (!finalVideoUrl) finalVideoUrl = fileUrl;
         } else {
+          const fileUrl = await saveImagePermanently(file);
           finalMedia.push({ type: 'image', url: fileUrl });
           finalImageUrls.push(fileUrl);
         }
-      });
+      }
     } else if (req.file) {
-      const fileUrl = `/uploads/${req.file.filename}`;
       if (req.file.mimetype.startsWith('video/') || isVideoFile(req.file.filename)) {
+        let fileUrl = `/uploads/${req.file.filename}`;
+        if (isCloudinaryConfigured()) {
+          try {
+            const cRes = await uploadVideoToCloudinary(req.file.path);
+            fileUrl = cRes.url;
+          } catch (_) {}
+        }
         finalMedia.push({ type: 'video', url: fileUrl });
         finalVideoUrl = fileUrl;
       } else {
+        const fileUrl = await saveImagePermanently(req.file);
         finalMedia.push({ type: 'image', url: fileUrl });
         finalImageUrls.push(fileUrl);
       }
@@ -188,10 +207,17 @@ export const createPost = async (req, res) => {
       }
     }
 
+    const formattedPost = formatPost(populatedPost, req.user._id);
+
+    // Broadcast new post in real-time to other users
+    if (chosenVisibility === 'public') {
+      emitNewPost(formattedPost);
+    }
+
     return res.status(201).json({
       success: true,
       message: 'Post published successfully.',
-      post: formatPost(populatedPost, req.user._id)
+      post: formattedPost
     });
   } catch (error) {
     console.error('createPost error:', error);
@@ -521,19 +547,33 @@ export const updatePost = async (req, res) => {
         ...(req.files.media || [])
       ];
 
-      allFiles.forEach((f) => {
-        const fileUrl = `/uploads/${f.filename}`;
+      for (const f of allFiles) {
         if (f.mimetype.startsWith('video/') || isVideoFile(f.filename)) {
+          let fileUrl = `/uploads/${f.filename}`;
+          if (isCloudinaryConfigured()) {
+            try {
+              const cRes = await uploadVideoToCloudinary(f.path);
+              fileUrl = cRes.url;
+            } catch (_) {}
+          }
           updatedVideo = fileUrl;
         } else {
+          const fileUrl = await saveImagePermanently(f);
           updatedImages.push(fileUrl);
         }
-      });
+      }
     } else if (req.file) {
-      const fileUrl = `/uploads/${req.file.filename}`;
       if (req.file.mimetype.startsWith('video/') || isVideoFile(req.file.filename)) {
+        let fileUrl = `/uploads/${req.file.filename}`;
+        if (isCloudinaryConfigured()) {
+          try {
+            const cRes = await uploadVideoToCloudinary(req.file.path);
+            fileUrl = cRes.url;
+          } catch (_) {}
+        }
         updatedVideo = fileUrl;
       } else {
+        const fileUrl = await saveImagePermanently(req.file);
         updatedImages.push(fileUrl);
       }
     }

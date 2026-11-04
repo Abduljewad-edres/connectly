@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useRouter } from '../context/RouterContext';
+import { useSocket } from '../context/SocketContext';
 import { apiGetFeed, apiGetSavedPosts } from '../services/api';
 import { PostCard } from '../components/PostCard';
 import { CreatePostCard } from '../components/CreatePostCard';
@@ -19,6 +20,7 @@ import {
 export const HomePage = ({ onOpenCreatePost, onEditPostClick, onOpenSettings }) => {
   const { user, isAuthenticated } = useAuth();
   const { navigate } = useRouter();
+  const { socket } = useSocket();
 
   const getUrlTag = () => {
     const params = new URLSearchParams(window.location.search);
@@ -36,6 +38,26 @@ export const HomePage = ({ onOpenCreatePost, onEditPostClick, onOpenSettings }) 
 
   const observerRef = useRef(null);
   const sentinelRef = useRef(null);
+
+  // Real-time listener: Prepend newly published posts from other users instantly
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleNewPost = (data) => {
+      const newPost = data?.post || data;
+      if (!newPost || !newPost._id) return;
+
+      setPosts((prev) => {
+        if (prev.some((p) => p._id === newPost._id)) return prev;
+        return [newPost, ...prev];
+      });
+    };
+
+    socket.on('post:created', handleNewPost);
+    return () => {
+      socket.off('post:created', handleNewPost);
+    };
+  }, [socket]);
 
   // Sync active tag with browser URL
   useEffect(() => {

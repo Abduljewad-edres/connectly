@@ -342,6 +342,12 @@ export const emitConversationSeen = ({ conversationId, recipientId, senderId, se
   });
 };
 
+// Broadcast newly published post in real-time to all connected users
+export const emitNewPost = (post) => {
+  if (!io || !post) return;
+  io.emit('post:created', { post });
+};
+
 // Notify followers when a followed user starts a public Live Space
 export const notifyFollowersOfLiveSpace = async ({ hostId, spaceId, spaceTitle }) => {
   try {

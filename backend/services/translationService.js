@@ -43,12 +43,24 @@ export const detectLanguage = (text = '') => {
   if (AMHARIC_REGEX.test(clean)) return 'am';
 
   // Check Afaan Oromoo keywords in Latin script
-  const words = clean.toLowerCase().replace(/[^a-zA-Z'\s]/g, '').split(/\s+/);
+  // Avoid false-positive classification on English text that merely mentions "Oromoo"
+  const words = clean.toLowerCase().replace(/[^a-zA-Z'\s]/g, '').split(/\s+/).filter(Boolean);
+  if (words.length === 0) return 'en';
+
   let oromoMatches = 0;
   for (const w of words) {
-    if (OROMO_KEYWORDS.has(w)) oromoMatches++;
+    if (OROMO_KEYWORDS.has(w) && w !== 'oromoo') {
+      oromoMatches++;
+    }
   }
-  if (oromoMatches >= 1 || (words.length > 0 && (oromoMatches / words.length) >= 0.15)) {
+
+  // If text is short (<= 4 words), require at least 1 keyword
+  if (words.length <= 4 && oromoMatches >= 1) {
+    return 'om';
+  }
+
+  // If text is longer, require at least 2 distinct keywords and >= 8% of words
+  if (oromoMatches >= 2 && (oromoMatches / words.length) >= 0.08) {
     return 'om';
   }
 
@@ -278,96 +290,175 @@ const decodeHtmlEntities = (str = '') => {
 };
 
 /**
- * Fetch from genuine translation provider with resilient timeout & failover
+ * Split text into semantic chunks (respecting paragraphs, punctuation, and max character limits)
+ * Ensures no chunk exceeds 350 characters so free translation APIs never hit query length limits.
  */
-const fetchFromExternalProvider = async (text, sourceLang, targetLang) => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 12000); // 12 seconds for reliable global API response
+const splitIntoChunks = (text = '', maxLen = 350) => {
+  if (!text || text.length <= maxLen) return [text];
 
-  const src = sourceLang === 'om' ? 'om' : sourceLang;
-  const tgt = targetLang === 'om' ? 'om' : targetLang;
+  const paragraphs = text.split(/(\n+)/);
+  const chunks = [];
 
-  // 1. Check for official Google Cloud Translation API Key if configured
+  for (const p of paragraphs) {
+    if (p.includes('\n')) {
+      chunks.push(p);
+      continue;
+    }
+
+    if (p.length <= maxLen) {
+      if (p.trim()) chunks.push(p);
+    } else {
+      // Split by sentence terminators (., !, ?, Ethiopic ።, Arabic ؟)
+      const sentences = p.match(/[^.!?።؟]+[.!?።؟]+|[^.!?።؟]+$/g) || [p];
+      let current = '';
+
+      for (const s of sentences) {
+        if ((current + s).length <= maxLen) {
+          current += s;
+        } else {
+          if (current.trim()) chunks.push(current);
+          if (s.length > maxLen) {
+            // Split long sentence by comma or word boundary
+            const words = s.split(/(\s+)/);
+            let subCurrent = '';
+            for (const w of words) {
+              if ((subCurrent + w).length <= maxLen) {
+                subCurrent += w;
+              } else {
+                if (subCurrent.trim()) chunks.push(subCurrent);
+                subCurrent = w;
+              }
+            }
+            if (subCurrent.trim()) current = subCurrent;
+            else current = '';
+          } else {
+            current = s;
+          }
+        }
+      }
+      if (current.trim()) chunks.push(current);
+    }
+  }
+
+  return chunks;
+};
+
+/**
+ * Fetch translation for a single chunk (< 350 chars) from genuine translation providers
+ */
+const fetchSingleChunk = async (chunkText, src, tgt) => {
+  const cleanChunk = chunkText.trim();
+  if (!cleanChunk) return chunkText;
+
+  // 1. Google Cloud Translation API Key if configured
   const googleApiKey = process.env.GOOGLE_TRANSLATE_API_KEY || process.env.TRANSLATION_API_KEY;
   if (googleApiKey) {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
       const gUrl = `https://translation.googleapis.com/language/translate/v2?key=${googleApiKey}`;
       const gRes = await fetch(gUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          q: text,
+          q: cleanChunk,
           source: src,
           target: tgt,
           format: 'text'
         }),
         signal: controller.signal
       });
+      clearTimeout(timeoutId);
 
       if (gRes.ok) {
         const gData = await gRes.json();
         const translated = gData?.data?.translations?.[0]?.translatedText;
-        if (translated && translated.trim() !== text.trim()) {
-          clearTimeout(timeoutId);
-          return {
-            translatedText: decodeHtmlEntities(translated.trim()),
-            provider: 'google-cloud-translate'
-          };
+        if (translated && translated.trim() !== cleanChunk) {
+          return decodeHtmlEntities(translated.trim());
         }
       }
     } catch (gErr) {
-      console.warn('[TranslationService] Google Cloud API error, trying fallback:', gErr.message);
+      // Continue to next provider
     }
   }
 
-  // 2. MyMemory Translation API (Official Free & Pro Tier)
+  // 2. MyMemory Translation API (Free & Pro Tier with chunk safety)
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
     const emailParam = process.env.MYMEMORY_EMAIL ? `&de=${encodeURIComponent(process.env.MYMEMORY_EMAIL)}` : '';
-    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${src}|${tgt}${emailParam}`;
+    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(cleanChunk)}&langpair=${src}|${tgt}${emailParam}`;
 
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timeoutId);
 
     if (res.ok) {
       const data = await res.json();
-      if (
-        data &&
-        data.responseData &&
-        data.responseData.translatedText
-      ) {
+      if (data && data.responseData && data.responseData.translatedText) {
         const rawTranslated = data.responseData.translatedText.trim();
         const isWarning = rawTranslated.toUpperCase().includes('MYMEMORY WARNING') ||
                           rawTranslated.toUpperCase().includes('IS AN INVALID TARGET LANGUAGE') ||
                           rawTranslated.toUpperCase().includes('QUERY LENGTH LIMIT EXCEEDED');
 
-        if (!isWarning && rawTranslated !== text.trim()) {
-          return {
-            translatedText: decodeHtmlEntities(rawTranslated),
-            provider: 'mymemory-api'
-          };
+        if (!isWarning && rawTranslated !== cleanChunk) {
+          return decodeHtmlEntities(rawTranslated);
         }
       }
     }
   } catch (err) {
-    // Timeout or network error
-    console.warn('[TranslationService] External provider request notice:', err.message);
-  } finally {
-    clearTimeout(timeoutId);
+    console.warn('[TranslationService] Single chunk request error:', err.message);
+  }
+
+  return cleanChunk;
+};
+
+/**
+ * Fetch from genuine translation provider with chunking support for arbitrary length notes/posts
+ */
+const fetchFromExternalProvider = async (text, sourceLang, targetLang) => {
+  const src = sourceLang === 'om' ? 'om' : sourceLang;
+  const tgt = targetLang === 'om' ? 'om' : targetLang;
+
+  // Split into manageable chunks (<= 350 chars) so query length limits are never exceeded
+  const chunks = splitIntoChunks(text, 350);
+
+  try {
+    const translatedChunks = [];
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      if (!chunk.trim() || chunk.includes('\n')) {
+        translatedChunks.push(chunk);
+        continue;
+      }
+      const translated = await fetchSingleChunk(chunk, src, tgt);
+      translatedChunks.push(translated);
+      // Brief pause between chunks to respect API rate limits
+      if (i < chunks.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    }
+
+    const fullResult = translatedChunks.join('');
+    if (fullResult && fullResult.trim() !== text.trim()) {
+      return {
+        translatedText: fullResult.trim(),
+        provider: 'mymemory-api'
+      };
+    }
+  } catch (err) {
+    console.warn('[TranslationService] Chunked translation failed:', err.message);
   }
 
   return null;
 };
 
 /**
- * Internal Rule-based and Dictionary Translation Engine
- */
-/**
- * Internal Rule-based and Dictionary Translation Engine
+ * Internal Rule-based and Dictionary Translation Engine (Exact Full-Phrase Matches Only)
  */
 const translateWithInternalEngine = (text, sourceLang, targetLang) => {
   const normalized = text.trim().toLowerCase();
 
-  // 1. Direct multi-word phrase match (case-insensitive)
+  // Direct multi-word phrase match (case-insensitive)
   const exactPhrase = PHRASES.find((p) => {
     if (sourceLang === 'en' && p.en.toLowerCase() === normalized) return true;
     if (p[sourceLang] && p[sourceLang].toLowerCase() === normalized) return true;
@@ -378,55 +469,7 @@ const translateWithInternalEngine = (text, sourceLang, targetLang) => {
     return exactPhrase[targetLang];
   }
 
-  // 2. Sub-phrase replacement across the text
-  let translated = text;
-  let hasReplaced = false;
-
-  // Sort phrases by length descending to match longest phrases first
-  const sortedPhrases = [...PHRASES].sort((a, b) => b.en.length - a.en.length);
-  for (const p of sortedPhrases) {
-    const srcPhrase = sourceLang === 'en' ? p.en : (p[sourceLang] || p.en);
-    if (!srcPhrase) continue;
-    const regex = new RegExp(`\\b${srcPhrase.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}\\b`, 'gi');
-    if (regex.test(translated) && p[targetLang]) {
-      translated = translated.replace(regex, p[targetLang]);
-      hasReplaced = true;
-    }
-  }
-
-  // 3. Word-by-word token replacement
-  const tokens = translated.split(/(\s+|[.,!?:;]+)/);
-  const resultTokens = tokens.map((tok) => {
-    const cleanWord = tok.trim().toLowerCase();
-    if (!cleanWord || cleanWord.length === 0) return tok;
-
-    // Check direct word dict
-    if (sourceLang === 'en' && WORD_DICT[cleanWord] && WORD_DICT[cleanWord][targetLang]) {
-      hasReplaced = true;
-      return WORD_DICT[cleanWord][targetLang];
-    }
-
-    // Check reverse word dict (source is not English)
-    if (sourceLang !== 'en') {
-      for (const [enWord, transObj] of Object.entries(WORD_DICT)) {
-        if (transObj[sourceLang] && transObj[sourceLang].toLowerCase() === cleanWord) {
-          hasReplaced = true;
-          if (targetLang === 'en') return enWord;
-          if (transObj[targetLang]) return transObj[targetLang];
-        }
-      }
-    }
-
-    return tok;
-  });
-
-  const finalTrans = resultTokens.join('');
-
-  if (hasReplaced && finalTrans.trim() !== text.trim()) {
-    return finalTrans.trim();
-  }
-
-  // 4. If no words matched and target is different, return null (never fake translations)
+  // Never return partial word-by-word token replacements (they corrupt notes and leave half the words in the original language)
   return null;
 };
 

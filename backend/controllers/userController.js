@@ -1,6 +1,7 @@
 import User from '../models/User.js';
 import Follow from '../models/Follow.js';
 import Post from '../models/Post.js';
+import { saveImagePermanently } from '../services/cloudinaryService.js';
 
 // @desc    Get user profile by ID or username
 // @route   GET /api/users/:id
@@ -124,13 +125,13 @@ export const updateProfile = async (req, res) => {
     // Handle files: profilePicture and bannerImage
     if (req.files) {
       if (req.files.profilePicture && req.files.profilePicture[0]) {
-        user.profilePicture = `/uploads/${req.files.profilePicture[0].filename}`;
+        user.profilePicture = await saveImagePermanently(req.files.profilePicture[0], 'connectly/avatars');
       }
       if (req.files.bannerImage && req.files.bannerImage[0]) {
-        user.bannerImage = `/uploads/${req.files.bannerImage[0].filename}`;
+        user.bannerImage = await saveImagePermanently(req.files.bannerImage[0], 'connectly/banners');
       }
     } else if (req.file) {
-      user.profilePicture = `/uploads/${req.file.filename}`;
+      user.profilePicture = await saveImagePermanently(req.file, 'connectly/avatars');
     }
 
     if (profilePicture !== undefined) {

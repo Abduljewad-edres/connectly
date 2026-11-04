@@ -35,7 +35,8 @@ import {
   SparklesIcon,
   UsersIcon,
   LockIcon,
-  FlagIcon
+  FlagIcon,
+  ImageIcon
 } from './Icons';
 
 export const PostCard = ({ post, onPostDeleted, onEditPostClick, onPostReported }) => {
@@ -188,6 +189,7 @@ export const PostCard = ({ post, onPostDeleted, onEditPostClick, onPostReported 
     ? post.imageUrls
     : (post.imageUrl ? [post.imageUrl] : []);
   const [currentImgIdx, setCurrentImgIdx] = useState(0);
+  const [failedImages, setFailedImages] = useState(new Set());
 
   const handlePrevImage = (e) => {
     e.stopPropagation();
@@ -674,12 +676,22 @@ export const PostCard = ({ post, onPostDeleted, onEditPostClick, onPostReported 
           onDoubleClick={handlePhotoDoubleClick}
           title="Double click photo to like"
         >
-          <img
-            src={postImages[currentImgIdx]}
-            alt={`Post media ${currentImgIdx + 1} of ${postImages.length}`}
-            className="post-image"
-            loading="lazy"
-          />
+          {failedImages.has(postImages[currentImgIdx]) ? (
+            <div className="post-media-error-placeholder">
+              <ImageIcon size={36} className="text-muted mb-2" />
+              <span className="text-muted text-sm font-medium">Image temporarily unavailable</span>
+            </div>
+          ) : (
+            <img
+              src={postImages[currentImgIdx]}
+              alt={`Post media ${currentImgIdx + 1} of ${postImages.length}`}
+              className="post-image"
+              loading="lazy"
+              onError={() => {
+                setFailedImages((prev) => new Set([...prev, postImages[currentImgIdx]]));
+              }}
+            />
+          )}
 
           {/* Multi-image indicators & navigation controls */}
           {postImages.length > 1 && (
