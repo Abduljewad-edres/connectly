@@ -344,7 +344,43 @@ const splitIntoChunks = (text = '', maxLen = 350) => {
 };
 
 /**
- * Fetch translation for a single chunk (< 350 chars) from genuine translation providers
+ * Primary High-Reliability Google Translation Provider (Zero rate-limit on server IPs)
+ */
+const fetchViaGoogleTranslate = async (text, sourceLang, targetLang) => {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 9000);
+    const q = encodeURIComponent(text.trim());
+    const sl = (sourceLang === 'auto' || !sourceLang) ? 'auto' : sourceLang;
+    const tl = targetLang;
+    const url = `https://translate.googleapis.com/translate_a/single?client=dict-chrome-ex&dt=t&sl=${sl}&tl=${tl}&q=${q}`;
+
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'application/json'
+      },
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && Array.isArray(data[0])) {
+        const translated = data[0].map((item) => (item && item[0]) || '').join('');
+        if (translated && translated.trim() && translated.trim() !== text.trim()) {
+          return decodeHtmlEntities(translated.trim());
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[TranslationService] Google primary engine error:', err.message);
+  }
+  return null;
+};
+
+/**
+ * Fetch translation for a single chunk (< 350 chars) from secondary translation providers
  */
 const fetchSingleChunk = async (chunkText, src, tgt) => {
   const cleanChunk = chunkText.trim();
@@ -389,7 +425,13 @@ const fetchSingleChunk = async (chunkText, src, tgt) => {
     const emailParam = process.env.MYMEMORY_EMAIL ? `&de=${encodeURIComponent(process.env.MYMEMORY_EMAIL)}` : '';
     const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(cleanChunk)}&langpair=${src}|${tgt}${emailParam}`;
 
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'application/json'
+      },
+      signal: controller.signal
+    });
     clearTimeout(timeoutId);
 
     if (res.ok) {
@@ -413,15 +455,23 @@ const fetchSingleChunk = async (chunkText, src, tgt) => {
 };
 
 /**
- * Fetch from genuine translation provider with chunking support for arbitrary length notes/posts
+ * Fetch from genuine translation provider with multi-tier failover
  */
 const fetchFromExternalProvider = async (text, sourceLang, targetLang) => {
   const src = sourceLang === 'om' ? 'om' : sourceLang;
   const tgt = targetLang === 'om' ? 'om' : targetLang;
 
-  // Split into manageable chunks (<= 350 chars) so query length limits are never exceeded
-  const chunks = splitIntoChunks(text, 350);
+  // 1. Primary: Fast, high-accuracy Google web translation engine
+  const googleResult = await fetchViaGoogleTranslate(text, src, tgt);
+  if (googleResult && googleResult.trim() !== text.trim()) {
+    return {
+      translatedText: googleResult.trim(),
+      provider: 'google-translate'
+    };
+  }
 
+  // 2. Secondary: Chunked failover via MyMemory or Google Cloud
+  const chunks = splitIntoChunks(text, 350);
   try {
     const translatedChunks = [];
     for (let i = 0; i < chunks.length; i++) {
@@ -432,9 +482,8 @@ const fetchFromExternalProvider = async (text, sourceLang, targetLang) => {
       }
       const translated = await fetchSingleChunk(chunk, src, tgt);
       translatedChunks.push(translated);
-      // Brief pause between chunks to respect API rate limits
       if (i < chunks.length - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 250));
+        await new Promise((resolve) => setTimeout(resolve, 200));
       }
     }
 
@@ -446,7 +495,7 @@ const fetchFromExternalProvider = async (text, sourceLang, targetLang) => {
       };
     }
   } catch (err) {
-    console.warn('[TranslationService] Chunked translation failed:', err.message);
+    console.warn('[TranslationService] Chunked failover notice:', err.message);
   }
 
   return null;

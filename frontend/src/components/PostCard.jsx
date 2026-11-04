@@ -90,15 +90,16 @@ export const PostCard = ({ post, onPostDeleted, onEditPostClick, onPostReported 
 
     let target = targetLangCode;
     if (!target) {
-      const isArabic = /[\u0600-\u06FF]/.test(post.content);
-      const isAmharic = /[\u1200-\u137F]/.test(post.content);
-      if (isArabic) {
-        target = currentLanguage !== 'ar' ? currentLanguage : 'en';
-      } else if (isAmharic) {
-        target = currentLanguage !== 'am' ? currentLanguage : 'en';
+      if (currentLanguage && currentLanguage !== 'en') {
+        target = currentLanguage;
       } else {
-        // English or Latin script
-        target = currentLanguage !== 'en' ? currentLanguage : 'ar';
+        const isArabic = /[\u0600-\u06FF]/.test(post.content);
+        const isAmharic = /[\u1200-\u137F]/.test(post.content);
+        if (isArabic || isAmharic) {
+          target = 'en';
+        } else {
+          target = 'am'; // Default English to Amharic
+        }
       }
     }
 
@@ -109,12 +110,14 @@ export const PostCard = ({ post, onPostDeleted, onEditPostClick, onPostReported 
         targetLang: target
       });
 
-      if (res.success && res.translatedText) {
+      if (res.success && res.translatedText && res.translatedText.trim() !== post.content.trim()) {
         setTranslatedContent(res.translatedText);
         setSourceLang(res.sourceLanguage || 'auto');
         setTranslatedTargetLang(target);
         setIsTranslated(true);
         setShowOriginal(false);
+      } else {
+        showToast(res.message || 'Translation unavailable for this text right now.', 'error');
       }
     } catch (err) {
       showToast(err.message || 'Translation unavailable at the moment.', 'error');
@@ -600,21 +603,34 @@ export const PostCard = ({ post, onPostDeleted, onEditPostClick, onPostReported 
               </div>
             ) : (
               <div className="translation-trigger-wrapper" ref={translationMenuRef}>
-                <button
-                  type="button"
-                  className="post-translate-btn"
-                  onClick={() => setShowTranslationMenu((prev) => !prev)}
-                  disabled={translatingPost}
-                  title="Translate post"
-                >
-                  <LanguagesIcon size={13} />
-                  <span>
-                    {translatingPost
-                      ? t('translating')
-                      : `${t('translate')}`}
-                  </span>
-                  <ChevronDownIcon size={11} className={`trans-chevron ${showTranslationMenu ? 'rotate-180' : ''}`} />
-                </button>
+                <div className="post-translate-btn-group">
+                  <button
+                    type="button"
+                    className="post-translate-btn"
+                    onClick={() => handleTranslatePost()}
+                    disabled={translatingPost}
+                    title="Translate post"
+                  >
+                    <LanguagesIcon size={13} />
+                    <span>
+                      {translatingPost
+                        ? t('translating')
+                        : `${t('translate')}`}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="post-translate-chevron-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowTranslationMenu((prev) => !prev);
+                    }}
+                    disabled={translatingPost}
+                    title="Choose language"
+                  >
+                    <ChevronDownIcon size={11} className={`trans-chevron ${showTranslationMenu ? 'rotate-180' : ''}`} />
+                  </button>
+                </div>
 
                 {showTranslationMenu && (
                   <div className="translation-dropdown-menu">

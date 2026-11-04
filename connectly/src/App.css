@@ -7866,6 +7866,45 @@ select:focus-visible {
   align-items: center;
 }
 
+.post-translate-btn-group {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-full);
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid var(--border-color);
+  overflow: hidden;
+  transition: all 0.18s ease;
+}
+
+.post-translate-btn-group:hover {
+  border-color: var(--primary);
+}
+
+.post-translate-btn-group .post-translate-btn {
+  border: none;
+  background: transparent;
+  border-radius: 0;
+  padding: 0.28rem 0.55rem;
+}
+
+.post-translate-chevron-btn {
+  border: none;
+  background: transparent;
+  border-left: 1px solid var(--border-color);
+  padding: 0.28rem 0.45rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: background 0.15s ease;
+}
+
+.post-translate-chevron-btn:hover {
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--primary);
+}
+
 .post-translate-btn {
   display: inline-flex;
   align-items: center;

@@ -27,7 +27,7 @@ export const translateText = async (req, res) => {
     }
     // If targetLang is missing or identical to detected source, choose appropriate alternate
     if (!targetLang || targetLang === detected) {
-      targetLang = detected === 'en' ? 'ar' : 'en';
+      targetLang = detected === 'en' ? 'am' : 'en';
     }
 
     const result = await translateContent({
