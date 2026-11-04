@@ -658,3 +658,34 @@ export const translateContent = async ({ text, targetLang = 'en', sourceLang }) 
     provider: translationResult.provider
   };
 };
+
+/**
+ * Save client-translated text to MongoDB cache for persistent fast access
+ */
+export const saveTranslationToCache = async ({ originalText, translatedText, sourceLang, targetLang, provider = 'client-bridge' }) => {
+  if (!originalText || !translatedText || originalText.trim() === translatedText.trim()) return false;
+  if (!mongoose.connection || mongoose.connection.readyState !== 1) return false;
+
+  try {
+    const cleanOrig = originalText.trim();
+    const cleanTrans = translatedText.trim();
+    const contentHash = generateContentHash(cleanOrig, sourceLang || 'auto', targetLang || 'en');
+
+    await TranslationCache.findOneAndUpdate(
+      { contentHash },
+      {
+        contentHash,
+        originalText: cleanOrig,
+        sourceLanguage: sourceLang || 'auto',
+        targetLanguage: targetLang || 'en',
+        translatedText: cleanTrans,
+        provider,
+        hitCount: 1
+      },
+      { upsert: true, new: true }
+    );
+    return true;
+  } catch (err) {
+    return false;
+  }
+};

@@ -3,7 +3,8 @@ import {
   translateText,
   batchTranslate,
   getSupportedLanguages,
-  detectTextLanguage
+  detectTextLanguage,
+  saveCache
 } from '../controllers/translationController.js';
 import { optionalAuth } from '../middleware/auth.js';
 
@@ -14,6 +15,7 @@ router.get('/languages', getSupportedLanguages);
 router.post('/detect', detectTextLanguage);
 router.post('/translate', optionalAuth, translateText);
 router.post('/batch', optionalAuth, batchTranslate);
+router.post('/cache', optionalAuth, saveCache);
 
 export default router;
 

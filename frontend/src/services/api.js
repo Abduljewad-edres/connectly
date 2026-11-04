@@ -645,11 +645,96 @@ export const apiAdminDeletePost = (postId) => {
 // ==========================================
 // Phase 1: Connectly Multilingual Bridge API
 // ==========================================
-export const apiTranslateText = ({ text, targetLang, sourceLang }) => {
-  return request('/translations/translate', {
-    method: 'POST',
-    body: { text, targetLang, sourceLang }
-  });
+export const apiTranslateText = async ({ text, targetLang, sourceLang }) => {
+  if (!text || typeof text !== 'string' || !text.trim()) {
+    return { success: false, message: 'Text to translate is required.' };
+  }
+
+  const cleanText = text.trim();
+  const tgt = targetLang || 'en';
+  const src = sourceLang || 'auto';
+
+  // 1. First, check backend (serves from MongoDB Atlas cache if already translated)
+  try {
+    const res = await request('/translations/translate', {
+      method: 'POST',
+      body: { text: cleanText, targetLang: tgt, sourceLang: src }
+    });
+    if (res && res.success && res.translatedText && res.translatedText.trim() !== cleanText) {
+      return res;
+    }
+  } catch (backendErr) {
+    console.warn('[Translate] Backend cache notice, invoking client translation bridge:', backendErr.message);
+  }
+
+  // 2. High-Performance Client Translation Bridge (from user device / residential IP)
+  // Completely immune to cloud datacenter IP blocks, with official Access-Control-Allow-Origin: *
+  try {
+    const q = encodeURIComponent(cleanText);
+    const sl = src === 'auto' ? 'auto' : src;
+    const gUrl = `https://translate.googleapis.com/translate_a/single?client=dict-chrome-ex&dt=t&sl=${sl}&tl=${tgt}&q=${q}`;
+
+    const clientRes = await fetch(gUrl);
+    if (clientRes.ok) {
+      const data = await clientRes.json();
+      if (Array.isArray(data) && Array.isArray(data[0])) {
+        const translated = data[0].map((item) => (item && item[0]) || '').join('');
+        if (translated && translated.trim() && translated.trim() !== cleanText) {
+          const detectedSrc = (data[2] && typeof data[2] === 'string') ? data[2] : sl;
+          const result = {
+            success: true,
+            translatedText: translated.trim(),
+            originalText: cleanText,
+            sourceLanguage: detectedSrc,
+            targetLanguage: tgt,
+            provider: 'google-client-bridge'
+          };
+
+          // Save to backend cache in background so next time it is instant for everyone
+          request('/translations/cache', {
+            method: 'POST',
+            body: {
+              originalText: cleanText,
+              translatedText: translated.trim(),
+              sourceLang: detectedSrc,
+              targetLang: tgt,
+              provider: 'google-client-bridge'
+            }
+          }).catch(() => {});
+
+          return result;
+        }
+      }
+    }
+  } catch (clientErr) {
+    console.warn('[Translate] Client bridge notice, trying secondary fallback:', clientErr.message);
+  }
+
+  // 3. Secondary Client Fallback: MyMemory
+  try {
+    const q = encodeURIComponent(cleanText);
+    const mUrl = `https://api.mymemory.translated.net/get?q=${q}&langpair=${src}|${tgt}`;
+    const mRes = await fetch(mUrl);
+    if (mRes.ok) {
+      const mData = await mRes.json();
+      const mText = mData?.responseData?.translatedText;
+      if (mText && !mText.includes('MYMEMORY WARNING') && mText.trim() !== cleanText) {
+        return {
+          success: true,
+          translatedText: mText.trim(),
+          originalText: cleanText,
+          sourceLanguage: src,
+          targetLanguage: tgt,
+          provider: 'mymemory-client-bridge'
+        };
+      }
+    }
+  } catch (_) {}
+
+  return {
+    success: false,
+    message: `Translation from ${src.toUpperCase()} to ${tgt.toUpperCase()} is currently unavailable. Please verify connection and try again.`
+  };
 };
 
 export const apiBatchTranslate = ({ items, targetLang }) => {

@@ -1,7 +1,8 @@
 import {
   translateContent,
   detectLanguage,
-  SUPPORTED_LANGUAGES
+  SUPPORTED_LANGUAGES,
+  saveTranslationToCache
 } from '../services/translationService.js';
 import User from '../models/User.js';
 
@@ -120,5 +121,18 @@ export const detectTextLanguage = async (req, res) => {
     success: true,
     detectedLanguage: detected
   });
+};
+
+// @desc    Save client translation to cache
+// @route   POST /api/translations/cache
+// @access  Public / Optional Auth
+export const saveCache = async (req, res) => {
+  try {
+    const { originalText, translatedText, sourceLang, targetLang, provider } = req.body;
+    await saveTranslationToCache({ originalText, translatedText, sourceLang, targetLang, provider });
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    return res.status(200).json({ success: false });
+  }
 };
 
