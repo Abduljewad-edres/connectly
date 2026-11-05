@@ -83,9 +83,21 @@ export const MessagesPage = () => {
       setConversationsLoading(true);
       const res = await apiGetConversations();
       if (res.success) {
-        setConversations(res.conversations || []);
+        const convs = res.conversations || [];
+        setConversations(convs);
         if (res.totalUnread !== undefined) {
           setUnreadMessagesCount(res.totalUnread);
+        }
+
+        // Auto-select conversation with unread messages or recent conversation on desktop
+        if (!activeConversation && convs.length > 0) {
+          const unreadConv = convs.find((c) => (c.unreadCount || 0) > 0);
+          const isDesktop = window.innerWidth >= 768;
+          if (unreadConv) {
+            selectConversation(unreadConv);
+          } else if (isDesktop) {
+            selectConversation(convs[0]);
+          }
         }
       }
     } catch (err) {
@@ -93,7 +105,7 @@ export const MessagesPage = () => {
     } finally {
       setConversationsLoading(false);
     }
-  }, [isAuthenticated, setUnreadMessagesCount]);
+  }, [isAuthenticated, setUnreadMessagesCount, activeConversation]);
 
   useEffect(() => {
     loadConversations();
@@ -145,11 +157,11 @@ export const MessagesPage = () => {
       // Mark conversation as seen
       if (conv.unreadCount > 0) {
         await apiMarkConversationSeen(conv._id);
-        const otherParticipant = conv.participants.find(
-          (p) => p._id.toString() !== user._id.toString()
+        const otherParticipant = conv.otherParticipant || conv.participants.find(
+          (p) => (p._id || p).toString() !== user._id.toString()
         );
         if (otherParticipant) {
-          sendConversationSeen(conv._id, otherParticipant._id);
+          sendConversationSeen(conv._id, otherParticipant._id || otherParticipant);
         }
 
         // Update local counts
@@ -208,6 +220,12 @@ export const MessagesPage = () => {
         }
         return c;
       });
+
+      if (!found) {
+        // If this message is from a conversation not currently in list, reload from server
+        loadConversations();
+        return prev;
+      }
 
       // Sort with latest on top
       return updated.sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
@@ -361,7 +379,8 @@ export const MessagesPage = () => {
 
   // Active other participant
   const otherParticipant = activeConversation
-    ? activeConversation.participants.find((p) => p._id.toString() !== user?._id.toString())
+    ? (activeConversation.otherParticipant ||
+       activeConversation.participants?.find((p) => (p._id || p).toString() !== user?._id?.toString()))
     : null;
 
   const isOtherOnline = otherParticipant ? isUserOnline(otherParticipant._id) : false;
@@ -449,8 +468,8 @@ export const MessagesPage = () => {
               </div>
             ) : (
               filteredConversations.map((conv) => {
-                const other = conv.participants.find(
-                  (p) => p._id.toString() !== user?._id.toString()
+                const other = conv.otherParticipant || conv.participants?.find(
+                  (p) => (p._id || p).toString() !== user?._id?.toString()
                 );
                 if (!other) return null;
                 const isOnline = isUserOnline(other._id);

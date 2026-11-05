@@ -37,13 +37,17 @@ export const getUserConversations = async (req, res) => {
           (p) => p._id.toString() !== currentUserId.toString()
         );
 
+        const otherParticipantObj = otherParticipant
+          ? (otherParticipant.toObject ? otherParticipant.toObject() : otherParticipant)
+          : null;
+
         return {
           _id: c._id,
           participants: c.participants,
-          otherParticipant: otherParticipant
+          otherParticipant: otherParticipantObj
             ? {
-                ...otherParticipant.toObject(),
-                isOnline: onlineIds.has(otherParticipant._id.toString())
+                ...otherParticipantObj,
+                isOnline: onlineIds.has((otherParticipant._id || otherParticipant).toString())
               }
             : null,
           lastMessage: c.lastMessage,
@@ -138,7 +142,7 @@ export const getOrCreateConversation = async (req, res) => {
         participants: conversation.participants,
         otherParticipant: otherParticipant
           ? {
-              ...otherParticipant.toObject(),
+              ...(otherParticipant.toObject ? otherParticipant.toObject() : otherParticipant),
               isOnline: isUserOnline(otherParticipant._id)
             }
           : null,
