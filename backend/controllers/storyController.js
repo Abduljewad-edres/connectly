@@ -115,7 +115,8 @@ export const getFeedStories = async (req, res) => {
       ]
     })
       .sort({ createdAt: 1 })
-      .populate('author', 'fullName username profilePicture isVerified');
+      .populate('author', 'fullName username profilePicture isVerified')
+      .lean();
 
     // 3. Group stories by author
     const groupsMap = new Map();

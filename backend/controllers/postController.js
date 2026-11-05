@@ -289,7 +289,8 @@ export const getFeed = async (req, res) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
-      .populate('author', 'fullName username profilePicture isVerified');
+      .populate('author', 'fullName username profilePicture isVerified')
+      .lean();
 
     // Attach commentsCount for each post
     const postIds = posts.map((p) => p._id);
@@ -692,7 +693,8 @@ export const getUserPosts = async (req, res) => {
 
     const posts = await Post.find({ author: userId, ...visibilityFilter })
       .sort({ createdAt: -1 })
-      .populate('author', 'fullName username profilePicture isVerified');
+      .populate('author', 'fullName username profilePicture isVerified')
+      .lean();
 
     const postIds = posts.map((p) => p._id);
     const commentCounts = await Comment.aggregate([

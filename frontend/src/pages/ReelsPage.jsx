@@ -40,9 +40,17 @@ export const ReelsPage = () => {
     return params.get('tag') || '';
   };
 
+  const getCachedReels = () => {
+    try {
+      const raw = sessionStorage.getItem('connectly_cached_reels');
+      if (raw) return JSON.parse(raw);
+    } catch (_) {}
+    return [];
+  };
+
   const [activeTag, setActiveTag] = useState(getUrlTag());
-  const [reels, setReels] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [reels, setReels] = useState(getCachedReels);
+  const [loading, setLoading] = useState(() => getCachedReels().length === 0);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
 
@@ -63,11 +71,14 @@ export const ReelsPage = () => {
   const loadReels = useCallback(
     async (pageNumber = 1, tag = activeTag, isRefresh = false) => {
       try {
-        if (pageNumber === 1) setLoading(true);
+        if (pageNumber === 1 && reels.length === 0) setLoading(true);
         const res = await apiGetReels({ page: pageNumber, limit: 10, tag });
         if (res.success) {
           if (isRefresh || pageNumber === 1) {
             setReels(res.reels || []);
+            if (!tag) {
+              try { sessionStorage.setItem('connectly_cached_reels', JSON.stringify((res.reels || []).slice(0, 10))); } catch (_) {}
+            }
           } else {
             setReels((prev) => [...prev, ...(res.reels || [])]);
           }
@@ -80,7 +91,7 @@ export const ReelsPage = () => {
         setLoading(false);
       }
     },
-    [activeTag]
+    [activeTag, reels.length]
   );
 
   useEffect(() => {

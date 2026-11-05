@@ -9,8 +9,16 @@ import { PlusSquareIcon } from './Icons';
 export const StoriesBar = () => {
   const { user, isAuthenticated } = useAuth();
 
-  const [storyGroups, setStoryGroups] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const getCachedStories = () => {
+    try {
+      const raw = sessionStorage.getItem('connectly_cached_stories');
+      if (raw) return JSON.parse(raw);
+    } catch (_) {}
+    return [];
+  };
+
+  const [storyGroups, setStoryGroups] = useState(getCachedStories);
+  const [loading, setLoading] = useState(() => getCachedStories().length === 0);
 
   // Modals
   const [isCreateStoryOpen, setIsCreateStoryOpen] = useState(false);
@@ -22,17 +30,18 @@ export const StoriesBar = () => {
   const loadStories = useCallback(async () => {
     if (!isAuthenticated) return;
     try {
-      setLoading(true);
+      if (storyGroups.length === 0) setLoading(true);
       const res = await apiGetFeedStories();
       if (res.success) {
         setStoryGroups(res.storyGroups || []);
+        try { sessionStorage.setItem('connectly_cached_stories', JSON.stringify(res.storyGroups || [])); } catch (_) {}
       }
     } catch (err) {
       console.error('Failed to load feed stories:', err);
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, storyGroups.length]);
 
   useEffect(() => {
     loadStories();

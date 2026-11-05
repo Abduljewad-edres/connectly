@@ -20,7 +20,8 @@ export const getUserConversations = async (req, res) => {
     })
       .sort({ lastMessageAt: -1 })
       .populate('participants', 'fullName username profilePicture bio')
-      .populate('lastMessageSender', 'fullName username');
+      .populate('lastMessageSender', 'fullName username')
+      .lean();
 
     // Attach unread counts & online status for other participant
     const onlineIds = new Set(getOnlineUserIds());
@@ -194,7 +195,8 @@ export const getConversationMessages = async (req, res) => {
       .skip(skip)
       .limit(limit)
       .populate('sender', 'fullName username profilePicture')
-      .populate('recipient', 'fullName username profilePicture');
+      .populate('recipient', 'fullName username profilePicture')
+      .lean();
 
     // Reverse so client receives them oldest -> newest
     const chronologicalMessages = messages.reverse();

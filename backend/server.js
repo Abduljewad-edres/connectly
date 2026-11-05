@@ -4,6 +4,7 @@ dotenv.config();
 import express from 'express';
 import http from 'http';
 import cors from 'cors';
+import compression from 'compression';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -49,6 +50,15 @@ app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// Gzip/Brotli response compression for ultra-fast API and asset transfers
+app.use(compression({
+  filter: (req, res) => {
+    if (req.headers.range) return false;
+    return compression.filter(req, res);
+  },
+  threshold: 1024
 }));
 
 // Body parser
@@ -178,6 +188,9 @@ if (frontendDist) {
         res.setHeader('Cache-Control', 'public, max-age=3600');
       } else if (filePath.endsWith('.html')) {
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      } else if (filePath.includes('/assets/') || filePath.includes('\\assets\\') || /\.[a-f0-9]{8,}\./.test(filePath)) {
+        // Hashed immutable Vite assets: Cache for 1 year (0ms reload)
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
       }
     }
   }));

@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { apiCreatePost, apiGetSuggestions } from '../services/api';
 import { getAvatarUrl } from '../utils/formatDate';
+import { compressImage } from '../utils/compressImage';
 import { SuggestionPopover } from './SuggestionPopover';
 import {
   ImageIcon,
@@ -48,35 +49,34 @@ export const CreatePostModal = ({ isOpen, onClose, onPostCreated }) => {
 
   if (!isOpen) return null;
 
-  const addFiles = (files) => {
+  const addFiles = async (files) => {
     const validFiles = [];
     const validPreviews = [];
 
-    Array.from(files).forEach((file) => {
+    for (const file of Array.from(files)) {
       // Check if it's a video file
       if (file.type.startsWith('video/')) {
         if (file.size > 80 * 1024 * 1024) {
           showToast(`Skipped ${file.name}: Video exceeds 80MB`, 'error');
-          return;
+          continue;
         }
         setVideoFile(file);
         setVideoPreview(URL.createObjectURL(file));
         showToast('Video attached! 🎥', 'info');
-        return;
+        continue;
       }
 
       // Check image files
       if (!file.type.startsWith('image/')) {
         showToast(`Skipped ${file.name}: Unsupported file format`, 'error');
-        return;
+        continue;
       }
-      if (file.size > 8 * 1024 * 1024) {
-        showToast(`Skipped ${file.name}: Exceeds 8MB`, 'error');
-        return;
-      }
-      validFiles.push(file);
-      validPreviews.push(URL.createObjectURL(file));
-    });
+
+      // Fast in-browser compression to guarantee ultra-fast uploads
+      const optimized = await compressImage(file);
+      validFiles.push(optimized);
+      validPreviews.push(URL.createObjectURL(optimized));
+    }
 
     if (validFiles.length > 0) {
       setImageFiles((prev) => [...prev, ...validFiles].slice(0, 10));

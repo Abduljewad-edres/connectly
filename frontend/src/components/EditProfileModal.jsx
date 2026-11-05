@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { apiUpdateProfile } from '../services/api';
 import { getAvatarUrl } from '../utils/formatDate';
+import { compressImage } from '../utils/compressImage';
 import { XIcon, ImageIcon, UserIcon, CameraIcon } from './Icons';
 
 export const EditProfileModal = ({ isOpen, onClose, onProfileUpdated }) => {
@@ -44,28 +45,30 @@ export const EditProfileModal = ({ isOpen, onClose, onProfileUpdated }) => {
 
   if (!isOpen) return null;
 
-  const handleAvatarChange = (e) => {
+  const handleAvatarChange = async (e) => {
     const selected = e.target.files[0];
     if (selected) {
-      if (selected.size > 5 * 1024 * 1024) {
-        setError('Avatar image must be under 5MB.');
+      if (selected.size > 15 * 1024 * 1024) {
+        setError('Avatar image must be under 15MB.');
         return;
       }
-      setAvatarFile(selected);
-      setAvatarPreview(URL.createObjectURL(selected));
+      const optimized = await compressImage(selected, 800, 800, 0.88);
+      setAvatarFile(optimized);
+      setAvatarPreview(URL.createObjectURL(optimized));
       setError('');
     }
   };
 
-  const handleBannerChange = (e) => {
+  const handleBannerChange = async (e) => {
     const selected = e.target.files[0];
     if (selected) {
-      if (selected.size > 5 * 1024 * 1024) {
-        setError('Banner cover must be under 5MB.');
+      if (selected.size > 20 * 1024 * 1024) {
+        setError('Banner cover must be under 20MB.');
         return;
       }
-      setBannerFile(selected);
-      setBannerPreview(URL.createObjectURL(selected));
+      const optimized = await compressImage(selected, 1600, 900, 0.85);
+      setBannerFile(optimized);
+      setBannerPreview(URL.createObjectURL(optimized));
       setError('');
     }
   };

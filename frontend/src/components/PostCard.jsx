@@ -417,6 +417,8 @@ export const PostCard = ({ post, onPostDeleted, onEditPostClick, onPostReported 
             src={getAvatarUrl(author)}
             alt={authorFullName}
             className="post-author-avatar"
+            loading="lazy"
+            decoding="async"
           />
           <div className="post-meta">
             <div className="post-author-line">
@@ -703,6 +705,7 @@ export const PostCard = ({ post, onPostDeleted, onEditPostClick, onPostReported 
               alt={`Post media ${currentImgIdx + 1} of ${postImages.length}`}
               className="post-image"
               loading="lazy"
+              decoding="async"
               onError={() => {
                 setFailedImages((prev) => new Set([...prev, postImages[currentImgIdx]]));
               }}
@@ -802,6 +805,8 @@ export const PostCard = ({ post, onPostDeleted, onEditPostClick, onPostReported 
                 src={getAvatarUrl(user)}
                 alt={user.fullName}
                 className="comment-user-avatar"
+                loading="lazy"
+                decoding="async"
               />
               <div className="comment-input-wrapper">
                 <input
@@ -845,6 +850,8 @@ export const PostCard = ({ post, onPostDeleted, onEditPostClick, onPostReported 
                       src={getAvatarUrl(commentAuthor)}
                       alt={commentAuthor.fullName}
                       className="comment-author-avatar"
+                      loading="lazy"
+                      decoding="async"
                       onClick={() => navigate(`/profile/${commentAuthor.username}`)}
                     />
                     <div className="comment-bubble">

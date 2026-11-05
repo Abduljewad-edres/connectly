@@ -28,12 +28,22 @@ export const HomePage = ({ onOpenCreatePost, onEditPostClick, onOpenSettings }) 
   };
 
   const [activeTag, setActiveTag] = useState(getUrlTag());
-  const [posts, setPosts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [feedMode, setFeedMode] = useState('for_you'); // 'for_you' | 'following' | 'all' | 'saved'
+
+  // Instant SWR cache: Render last viewed posts immediately in 0ms on refresh
+  const getCachedPosts = () => {
+    try {
+      const raw = sessionStorage.getItem(`connectly_feed_${feedMode}`);
+      if (raw) return JSON.parse(raw);
+    } catch (_) {}
+    return [];
+  };
+
+  const [posts, setPosts] = useState(getCachedPosts);
+  const [loading, setLoading] = useState(() => getCachedPosts().length === 0);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [feedMode, setFeedMode] = useState('for_you'); // 'for_you' | 'following' | 'all' | 'saved'
   const [autoScroll, setAutoScroll] = useState(true);
 
   const observerRef = useRef(null);
@@ -72,20 +82,28 @@ export const HomePage = ({ onOpenCreatePost, onEditPostClick, onOpenSettings }) 
 
   const loadFeed = async (pageNumber = 1, mode = feedMode, tag = activeTag, isRefresh = false) => {
     try {
-      if (pageNumber === 1) setLoading(true);
-      else setLoadingMore(true);
+      if (pageNumber === 1) {
+        // Only trigger full skeleton if no cached posts exist
+        if (posts.length === 0) setLoading(true);
+      } else {
+        setLoadingMore(true);
+      }
 
       if (mode === 'saved') {
         const res = await apiGetSavedPosts();
         if (res.success && res.posts) {
           setPosts(res.posts);
           setHasMore(false);
+          try { sessionStorage.setItem('connectly_feed_saved', JSON.stringify(res.posts.slice(0, 20))); } catch (_) {}
         }
       } else {
         const res = await apiGetFeed(pageNumber, 10, mode, tag);
         if (res.success && res.posts) {
           if (isRefresh || pageNumber === 1) {
             setPosts(res.posts);
+            if (!tag) {
+              try { sessionStorage.setItem(`connectly_feed_${mode}`, JSON.stringify(res.posts.slice(0, 20))); } catch (_) {}
+            }
           } else {
             // Append and deduplicate posts by _id
             setPosts((prev) => {

@@ -30,7 +30,8 @@ export const getNotifications = async (req, res) => {
       .skip(skip)
       .limit(limit)
       .populate('sender', 'fullName username profilePicture isVerified')
-      .populate('post', 'content imageUrl videoUrl');
+      .populate('post', 'content imageUrl videoUrl')
+      .lean();
 
     return res.status(200).json({
       success: true,

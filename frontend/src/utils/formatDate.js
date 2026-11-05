@@ -18,6 +18,9 @@ export const formatRelativeTime = (dateString) => {
 
 export const getAvatarUrl = (user) => {
   if (user?.profilePicture) {
+    if (user.profilePicture.includes('cloudinary.com') && !user.profilePicture.includes('f_auto,q_auto')) {
+      return user.profilePicture.replace('/upload/', '/upload/f_auto,q_auto,w_120,h_120,c_fill,g_face/');
+    }
     if (user.profilePicture.startsWith('http') || user.profilePicture.startsWith('data:')) {
       return user.profilePicture;
     }

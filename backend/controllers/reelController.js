@@ -132,7 +132,8 @@ export const getReelsFeed = async (req, res) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
-      .populate('author', 'fullName username profilePicture bio isVerified');
+      .populate('author', 'fullName username profilePicture bio isVerified')
+      .lean();
 
     // Get following list if user is logged in
     let followingIds = new Set();

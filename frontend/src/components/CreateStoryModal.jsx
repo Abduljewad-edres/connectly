@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { apiCreateStory } from '../services/api';
 import { useToast } from '../context/ToastContext';
+import { compressImage } from '../utils/compressImage';
 import { XIcon, ImageIcon, CameraIcon, SparklesIcon } from './Icons';
 
 export const CreateStoryModal = ({ isOpen, onClose, onStoryCreated }) => {
@@ -17,7 +18,7 @@ export const CreateStoryModal = ({ isOpen, onClose, onStoryCreated }) => {
 
   if (!isOpen) return null;
 
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
@@ -34,9 +35,10 @@ export const CreateStoryModal = ({ isOpen, onClose, onStoryCreated }) => {
       return;
     }
 
-    setSelectedFile(file);
+    const finalFile = isImage ? await compressImage(file) : file;
+    setSelectedFile(finalFile);
     setMediaType(isVideo ? 'video' : 'image');
-    setPreviewUrl(URL.createObjectURL(file));
+    setPreviewUrl(URL.createObjectURL(finalFile));
   };
 
   const handleClearMedia = () => {
