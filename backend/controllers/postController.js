@@ -99,10 +99,6 @@ export const createPost = async (req, res) => {
         finalImageUrls.push(fileUrl);
       }
     }
-        finalMedia.push({ type: 'image', url: fileUrl });
-        finalImageUrls.push(fileUrl);
-      }
-    }
 
     // Check URLs provided in body
     if (req.body.imageUrls) {
