@@ -10,6 +10,7 @@ import {
   isCloudinaryConfigured,
   ensureCloudinaryConfigured,
   uploadVideoToCloudinary,
+  saveVideoPermanently,
   getOptimizedVideoUrl
 } from '../services/cloudinaryService.js';
 
@@ -35,20 +36,12 @@ export const createReel = async (req, res) => {
     let videoDuration = Number(duration) || 0;
 
     if (req.file) {
-      if (ensureCloudinaryConfigured()) {
-        try {
-          const uploadRes = await uploadVideoToCloudinary(req.file.path, { folder: 'connectly/reels' });
-          videoUrl = uploadRes.url;
-          if (uploadRes.duration && !videoDuration) {
-            videoDuration = Math.round(uploadRes.duration);
-          }
-        } catch (cloudErr) {
-          console.error('[Reel] Cloudinary upload failed:', cloudErr.message || cloudErr);
-          videoUrl = `/uploads/${req.file.filename}`;
+      const saved = await saveVideoPermanently(req.file, { folder: 'connectly/reels', duration });
+      if (saved) {
+        videoUrl = saved.url;
+        if (saved.duration && !videoDuration) {
+          videoDuration = Math.round(saved.duration);
         }
-      } else {
-        console.warn('[Reel] Cloudinary credentials not configured; saving video locally.');
-        videoUrl = `/uploads/${req.file.filename}`;
       }
     } else if (rawVideoUrl && typeof rawVideoUrl === 'string' && rawVideoUrl.trim()) {
       videoUrl = rawVideoUrl.trim();

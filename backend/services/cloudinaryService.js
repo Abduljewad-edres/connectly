@@ -217,6 +217,78 @@ export const saveImagePermanently = async (file, folder = 'connectly/images') =>
 };
 
 /**
+ * Ultra-robust persistent video storage:
+ * 1. If Cloudinary credentials are valid, uploads to Cloudinary CDN (permanent streaming URL).
+ * 2. If Cloudinary fails (e.g. cloud_name mismatch) or is not configured:
+ *    If video is <= 12MB, encodes it as a persistent Base64 Data URI directly in MongoDB Atlas!
+ *    MongoDB Atlas is hosted in the cloud and NEVER wiped by Render restarts!
+ * 3. Falls back to /uploads/ only for large files > 12MB.
+ * @param {Object} file - Express multer file object
+ * @param {Object} [options] - Options (folder, duration, etc.)
+ * @returns {Promise<{ url: string, duration: number, provider: string }>}
+ */
+export const saveVideoPermanently = async (file, options = {}) => {
+  if (!file) return null;
+
+  // 1. Try Cloudinary CDN first
+  if (ensureCloudinaryConfigured()) {
+    try {
+      const res = await uploadVideoToCloudinary(file.path, options);
+      return {
+        url: res.url,
+        duration: res.duration || 0,
+        provider: 'cloudinary'
+      };
+    } catch (cErr) {
+      const cfg = getCleanCloudinaryConfig();
+      console.error(`[Cloudinary Video Upload Failed] ${cErr.message}`);
+      if (cErr.message && cErr.message.toLowerCase().includes('cloud_name mismatch')) {
+        console.error(`[Cloudinary Auth Warning] The Cloud Name '${cfg?.cloud_name}' does not match your API Key '${cfg?.api_key}'. Please check your Cloudinary Dashboard and update CLOUDINARY_URL in Render.`);
+      }
+    }
+  }
+
+  // 2. Persistent MongoDB Atlas Base64 storage for short videos <= 12MB
+  try {
+    if (file.path && fs.existsSync(file.path)) {
+      const stats = fs.statSync(file.path);
+      if (stats.size <= 12 * 1024 * 1024) {
+        const ext = path.extname(file.originalname || file.filename || '').toLowerCase();
+        const mimeMap = {
+          '.mp4': 'video/mp4',
+          '.webm': 'video/webm',
+          '.mov': 'video/quicktime',
+          '.mkv': 'video/x-matroska',
+          '.m4v': 'video/x-m4v'
+        };
+        const mimeType = file.mimetype || mimeMap[ext] || 'video/mp4';
+        const buffer = fs.readFileSync(file.path);
+        const base64 = buffer.toString('base64');
+        const dataUri = `data:${mimeType};base64,${base64}`;
+
+        console.log(`[Storage] Short video saved persistently to MongoDB Atlas (${(stats.size / (1024 * 1024)).toFixed(2)} MB). Safe from Render ephemeral restarts!`);
+
+        try { fs.unlinkSync(file.path); } catch (_) {}
+        return {
+          url: dataUri,
+          duration: Number(options.duration) || 0,
+          provider: 'database'
+        };
+      }
+    }
+  } catch (dbErr) {
+    console.error('[Storage] Persistent video encoding error:', dbErr.message);
+  }
+
+  // 3. Fallback to local disk (note: ephemeral on Render free tier for files > 12MB)
+  return {
+    url: `/uploads/${file.filename}`,
+    duration: Number(options.duration) || 0,
+    provider: 'local'
+  };
+};
+
+/**
  * Helper to get optimized Cloudinary video URL (or pass-through local URL)
  * @param {string} rawUrl - Video URL (local path or Cloudinary URL)
  * @returns {string} Optimized URL

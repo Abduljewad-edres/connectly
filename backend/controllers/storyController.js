@@ -9,6 +9,7 @@ import Message from '../models/Message.js';
 import { createAndEmitNotification, emitNewMessage } from '../utils/socket.js';
 import {
   saveImagePermanently,
+  saveVideoPermanently,
   uploadVideoToCloudinary,
   ensureCloudinaryConfigured,
   isCloudinaryConfigured
@@ -36,18 +37,8 @@ export const createStory = async (req, res) => {
     if (req.file) {
       if (isVideoFile(req.file.filename, req.file.mimetype)) {
         mediaType = 'video';
-        if (ensureCloudinaryConfigured()) {
-          try {
-            const res = await uploadVideoToCloudinary(req.file.path, { folder: 'connectly/stories' });
-            mediaUrl = res.url;
-          } catch (cErr) {
-            console.error('[Story] Cloudinary video upload failed:', cErr.message || cErr);
-            mediaUrl = `/uploads/${req.file.filename}`;
-          }
-        } else {
-          console.warn('[Story] Cloudinary credentials not configured; saving video locally.');
-          mediaUrl = `/uploads/${req.file.filename}`;
-        }
+        const saved = await saveVideoPermanently(req.file, { folder: 'connectly/stories' });
+        mediaUrl = saved?.url || `/uploads/${req.file.filename}`;
       } else {
         mediaType = 'image';
         mediaUrl = await saveImagePermanently(req.file, 'connectly/stories');

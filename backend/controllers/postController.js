@@ -8,7 +8,8 @@ import {
   isCloudinaryConfigured,
   ensureCloudinaryConfigured,
   uploadVideoToCloudinary,
-  saveImagePermanently
+  saveImagePermanently,
+  saveVideoPermanently
 } from '../services/cloudinaryService.js';
 
 // Helper to determine media type from extension or mimetype
@@ -76,15 +77,8 @@ export const createPost = async (req, res) => {
 
       for (const file of allFiles) {
         if (file.mimetype.startsWith('video/') || isVideoFile(file.filename)) {
-          let fileUrl = `/uploads/${file.filename}`;
-          if (ensureCloudinaryConfigured()) {
-            try {
-              const cRes = await uploadVideoToCloudinary(file.path, { folder: 'connectly/posts' });
-              fileUrl = cRes.url;
-            } catch (vErr) {
-              console.error('[Post] Video upload to Cloudinary failed:', vErr.message || vErr);
-            }
-          }
+          const saved = await saveVideoPermanently(file, { folder: 'connectly/posts' });
+          const fileUrl = saved?.url || `/uploads/${file.filename}`;
           finalMedia.push({ type: 'video', url: fileUrl });
           if (!finalVideoUrl) finalVideoUrl = fileUrl;
         } else {
@@ -95,19 +89,16 @@ export const createPost = async (req, res) => {
       }
     } else if (req.file) {
       if (req.file.mimetype.startsWith('video/') || isVideoFile(req.file.filename)) {
-        let fileUrl = `/uploads/${req.file.filename}`;
-        if (ensureCloudinaryConfigured()) {
-          try {
-            const cRes = await uploadVideoToCloudinary(req.file.path, { folder: 'connectly/posts' });
-            fileUrl = cRes.url;
-          } catch (vErr) {
-            console.error('[Post] Video upload to Cloudinary failed:', vErr.message || vErr);
-          }
-        }
+        const saved = await saveVideoPermanently(req.file, { folder: 'connectly/posts' });
+        const fileUrl = saved?.url || `/uploads/${req.file.filename}`;
         finalMedia.push({ type: 'video', url: fileUrl });
         finalVideoUrl = fileUrl;
       } else {
-        const fileUrl = await saveImagePermanently(req.file);
+        const fileUrl = await saveImagePermanently(req.file, 'connectly/posts');
+        finalMedia.push({ type: 'image', url: fileUrl });
+        finalImageUrls.push(fileUrl);
+      }
+    }
         finalMedia.push({ type: 'image', url: fileUrl });
         finalImageUrls.push(fileUrl);
       }
