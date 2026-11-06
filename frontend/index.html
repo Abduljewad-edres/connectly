@@ -30,7 +30,37 @@
     <meta name="mobile-web-app-capable" content="yes" />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="initial-splash-loader" style="position:fixed;inset:0;background:#0b0f19;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:999999;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#ffffff;user-select:none;-webkit-user-select:none;">
+        <div style="position:relative;width:84px;height:84px;margin-bottom:22px;display:flex;align-items:center;justify-content:center;">
+          <div style="position:absolute;inset:0;border-radius:24px;background:linear-gradient(135deg,#6366f1,#8b5cf6);opacity:0.35;filter:blur(16px);animation:pulse-glow 2s infinite ease-in-out;"></div>
+          <div style="position:relative;width:76px;height:76px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:22px;display:flex;align-items:center;justify-content:center;box-shadow:0 12px 30px -6px rgba(99,102,241,0.55);">
+            <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+          </div>
+        </div>
+        <h1 style="font-size:26px;font-weight:700;margin:0 0 6px 0;letter-spacing:-0.5px;background:linear-gradient(to right,#ffffff,#c7d2fe);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Connectly</h1>
+        <p style="font-size:13px;color:#94a3b8;margin:0 0 28px 0;font-weight:500;letter-spacing:0.2px;">Connect. Share. Belong.</p>
+        <div style="width:48px;height:3px;background:rgba(255,255,255,0.08);border-radius:99px;overflow:hidden;position:relative;">
+          <div style="position:absolute;top:0;left:0;bottom:0;background:linear-gradient(90deg,#6366f1,#a855f7);border-radius:99px;animation:slide-bar 1.3s infinite ease-in-out;"></div>
+        </div>
+        <style>
+          @keyframes pulse-glow {
+            0%, 100% { transform: scale(0.95); opacity: 0.3; }
+            50% { transform: scale(1.18); opacity: 0.65; }
+          }
+          @keyframes slide-bar {
+            0% { left: -40%; width: 20%; }
+            50% { width: 60%; }
+            100% { left: 100%; width: 20%; }
+          }
+        </style>
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

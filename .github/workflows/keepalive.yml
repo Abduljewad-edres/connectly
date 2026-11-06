@@ -1,0 +1,16 @@
+name: Keep Render Service Awake 24/7
+
+on:
+  schedule:
+    # Run every 10 minutes to prevent Render free tier 15-minute sleep
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Connectly Health Endpoint
+        run: |
+          echo "Pinging Connectly API..."
+          curl -s -f https://connectly-kt1p.onrender.com/api/health || echo "Ping attempted"
